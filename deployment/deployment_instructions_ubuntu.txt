@@ -1,0 +1,143 @@
+ubuntu 1804 部署说明
+系统环境：
+    ubuntu 18.04
+硬件环境：
+    内存：16G
+    显卡：RTX2060s（双）
+    磁盘：3T
+    raid备份
+
+1.安装显卡驱动(硬件出厂时安装)
+
+2.安装cuda 9.0
+    前期准备：
+        降低gcc版本到5（由于Ubuntu 18.04对应的gcc版本过高）
+        sudo apt install gcc-5
+        sudo apt install g++-5
+        查看
+        ls -l gcc*
+        修改软连接
+        sudo mv gcc gcc.bak #备份
+        sudo ln -s gcc-5 gcc #重新链接gcc
+        sudo mv g++ g++.bak #备份
+        sudo ln -s g++-5 g++　#重新链接g++
+    安装;
+        CUDA 9.0 只能支持17.04和16.04的Ubuntu（18需要添加补丁）
+        下载 cuda 9.0 -> linux -> x86_64 -> Ubuntu -> 16.04 -> runfile(local) # 主程序和四个补丁包均要下载
+        sudo sh 下载目录/cuda_9.0.176_384.81_linux.run
+        一路回车键（当问到是否安装显卡驱动时，输入no,因为已经安装完了，其他均yes）
+        同样的方案安装四个补丁包
+            $ sudo sh cuda_9.0.176.1_linux.run
+            $ sudo sh cuda_9.0.176.2_linux.run
+            $ sudo sh cuda_9.0.176.3_linux.run
+            $ sudo sh cuda_9.0.176.4_linux.run
+        安装完补丁，不报错，显示成功即可
+        配置环境变量：
+            vi ~/.bashrc （如果你无法在~目录下看到它，你可以使用【Ctrl+H】来强制显示隐藏文件）
+            添加（注意自己的安装目录）
+            export  PATH=/usr/local/cuda-9.0/bin:$PATH
+            export  LD_LIBRARY_PATH=/usr/local/cuda-9.0/lib64$LD_LIBRARY_PATH
+    重启计算机
+        sudo shutdown -r now
+
+3.安装cuDNN 7 (下载对应版本)
+    cuda 9.0 对应的cuDNN版本应该是cuDNN v7.5.1
+    选择cuDNN Library for Linux
+    解压下载好的压缩包
+    将解压出来是一个cuda文件夹，进去有两个文件夹，一个include和一个lib64。进入刚刚解压得到的cuda文件夹，并在命令行中执行如下命令：
+    sudo cp ./include/cudnn.h /usr/local/cuda/include
+    sudo cp ./include/libcudnn* /usr/local/cuda/lib64
+    赋权
+    sudo chmod  a+r /usr/local/cuda/include/cudnn.h /usr/local/cuda/lib64/libcudnn*
+
+4.安装anaconda及python3.6虚拟环境
+    下载及安装
+        bash Anaconda3-5.1.0-Linux-x86_64.sh
+        一路回车+yes
+        提示信息“Do you wish to proceed with the installation of Microsoft VSCode? [yes|no]”，输入no；
+    环境变量
+        sudo gedit ~/.bashrc
+        添加
+        export PATH="/home/ders/anaconda3/bin:$PATH"
+        生效
+        source ~/.bashrc
+    创建python3.6.9虚拟环境
+        conda create -n tfgpu_py3.6.9 python=3.6.9
+    激活
+        source activate tfgpu_py3.6.9
+    安装依赖：
+        pip install -i http://mirrors.aliyun.com/pypi/simple tensorflow-gpu==1.9
+        pip install -i http://mirrors.aliyun.com/pypi/simple easydict
+        pip install -i http://mirrors.aliyun.com/pypi/simple cython
+        pip install -i http://mirrors.aliyun.com/pypi/simple opencv-python
+        pip install -i http://mirrors.aliyun.com/pypi/simple matplotlib
+        pip install -i http://mirrors.aliyun.com/pypi/simple pillow
+
+5.copy project
+
+6.编译系统
+    cd /usr/local/EvictionBirdAI/lib
+    sudo make clean
+    sudo make
+    注：由于Ubuntu 默认make 是找的python2.7,因此修改此处的MakeFile文件，将
+    python setup.py build_ext --inplace
+    改为/home/ders/anaconda3/bin/python setup.py build_ext --inplace(指定python版本)
+
+7.编译系统
+    cd /usr/local/EvictionBirdAI/data/coco/PythonAPI
+    sudo make clean
+    sudo make
+    注：由于Ubuntu 默认make 是找的python2.7,因此修改此处的MakeFile文件，将
+    all:
+        # install pycocotools locally
+        python setup.py build_ext --inplace
+        rm -rf build
+    install:
+        # install pycocotools to the Python site-packages
+        python setup.py build_ext install
+        rm -rf build
+    改为
+    all:
+        # install pycocotools locally
+        /home/ders/anaconda3/bin/python setup.py build_ext --inplace
+        rm -rf build
+    install:
+        # install pycocotools to the Python site-packages
+        /home/ders/anaconda3/bin/python setup.py build_ext install
+        rm -rf build(指定python版本)
+
+8.在windows 环境下使用python3.6时需要修改coco/PythonAPI 中的setup.py,即添加配置（详见windows部署文档）
+    然而这Ubuntu中需要把这个新加的去掉，不然会报错（没有则可略过此步骤）
+    到此两处make均可通过
+
+9.supervisor
+    安装：
+    sudo apt-get install python-setuptools
+    easy_install supervisor
+    echo_supervisord_conf > /etc/supervisord.conf
+    配置：
+    sudo vi /etc/supervisord.conf
+    文件末尾添加
+        [program:camera_num01]
+        command=/home/ders/anaconda3/bin/python /usr/local/pyworkspace/EvictionBirdAI/demo.py
+        process_name=%(program_name)s
+        numprocs=1 # 进程数量
+        autostart=true # 随supervisor自动启动进程
+        autorestart=true # 意外挂掉重启
+        startsecs=1 # 重启延时
+        startretries=10 # 失败最大尝试次数
+        stdout_logfile=/usr/local/pyworkspace/log/%(program_name)s_out.log
+        stderr_logfile=/usr/local/pyworkspace/log/%(program_name)s_err.log
+
+        [program:camera_num02]
+        command=/home/ders/anaconda3/bin/python /usr/local/pyworkspace/EvictionBirdAI/demo.py
+        process_name=%(program_name)s
+        numprocs=1 # 进程数量
+        autostart=true # 随supervisor自动启动进程
+        autorestart=true # 意外挂掉重启
+        startsecs=1 # 重启延时
+        startretries=10 # 失败最大尝试次数
+        stdout_logfile=/usr/local/pyworkspace/log/%(program_name)s_out.log
+        stderr_logfile=/usr/local/pyworkspace/log/%(program_name)s_err.log
+
+        。。。

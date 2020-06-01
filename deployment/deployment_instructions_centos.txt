@@ -1,0 +1,76 @@
+centos 1804 部署说明
+系统环境：centos1804
+硬件环境：
+
+1.安装python3.5.4  执行批处理./pyinit.sh
+
+2.安装python虚拟环境并切换到虚拟环境
+	pip3 install -i https://pypi.tuna.tsinghua.edu.cn/simple virtualenv
+	pip3 install -i https://pypi.tuna.tsinghua.edu.cn/simple virtualenvwrapper
+	vi ~/.bashrc
+	# 添加
+	VIRTUALENVWRAPPER_PYTHON=/usr/local/python3/bin/python3.5    # 指定virtualenvwrapper执行的python版本
+	export WORKON_HOME=$HOME/.virtualenvs    # 指定虚拟环境存放目录，.virtualenvs目录名可自拟
+	source /usr/local/python3/bin/virtualenvwrapper.sh    # virtualenvwrapper.sh所在目录
+	# 生效
+	source ~/.bashrc
+	# 软链接
+	ln virtualenv /usr/bin/virtualenv
+	# 创建虚拟环境
+	mkvirtualenv --python=/usr/bin/python3 td_tfgpu_py3.5
+	# 切换到虚拟环境
+	workon my_env
+	
+3.安装supervisor
+	yum install epel-release #先安装EPEL源
+	yum install -y supervisor
+	systemctl enable supervisord # 开机自启动
+	systemctl start supervisord # 启动
+	
+4.将工程拷贝到工作目录/usr/local/pyworkspace
+
+5.安装显卡驱动(不同Linux版本安装方式不同)
+	# 查看我的内核版本
+	uname -r
+	# 查看一下可以安装的版本
+	yum list | grep kernel-devel
+	# 如果对应不上需要下载对应资源(这里已经下好)
+	cd /usr/local/soft
+	yum -y localinstall kernel-devel-3.10.0-862.el7.x86_64.rpm
+	# 安装其他依赖
+	yum -y install gcc dkms
+	# 修改/etc/modprobe.d/blacklist.conf 文件
+	echo -e "blacklist nouveau\noptions nouveau modeset=0" > /etc/modprobe.d/blacklist.conf
+	# 重新建立initramfs image文件
+	mv /boot/initramfs-$(uname -r).img /boot/initramfs-$(uname -r).img.bak
+	dracut /boot/initramfs-$(uname -r).img $(uname -r)
+	# 做完这个步骤可重启一下
+	shutdown -r now 
+	# 执行安装
+	cd /usr/local/soft
+	chmod u+x NVIDIA-Linux-x86_64-440.82.run
+	./NVIDIA-Linux-x86_64-440.82.run --kernel-source-path=/usr/src/kernels/3.10.0-862.el7.x86_64
+
+6.安装cuda(cuda是nvidia的编程语言平台)
+
+
+7.cudnn(GPU加速计算深层神经网络的库)
+
+
+5.安装依赖
+	pip install -i https://pypi.tuna.tsinghua.edu.cn/simple cython
+	pip install -i https://pypi.tuna.tsinghua.edu.cn/simple easydict
+	pip install -i https://pypi.tuna.tsinghua.edu.cn/simple opencv-python
+	
+6.编译COCO API
+	# 进入到coco\PythonAPI所在目录
+	cd /usr/local/pyworkspace/Faster-RCNN-TensorFlow-Python3-master/data/coco/PythonAPI
+	# 编译
+	make clean
+	make
+	
+	
+	
+
+
+

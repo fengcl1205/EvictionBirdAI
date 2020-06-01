@@ -1,0 +1,37 @@
+faster-rcnn-tf
+支持py3.5 py3.6
+安装显卡驱动
+安装cuda9.0
+安装cudnn（与cuda版本对应）
+pip
+tensorflow-gpu == 1.9 (该版本对应cuda9.0,所以只能这个版本)
+opencv-python
+pillow
+cython
+easydict
+matplotlib
+scipy
+
+
+python3.5:
+    在cmd中使用cd命令到解压后的文件夹下…/data/coco/PythonAPI目录下执行代码：
+    python setup.py build_ext --inplace
+    python setup.py build_ext install
+    会在coco\PythonAPI\build 目录中生成lib.win-amd64-3.5/temp.win-amd64-3.5目录
+    会在 根目录\lib\utils 生成cython_bbox.cp35-win_amd64.pyd
+
+python3.6:
+    1、编辑 data\coco\PythonAPI\setup.py 添加下面到ext_modules[]
+    Extension(
+        'lib.utils.cython_bbox',
+        sources=['../../../lib/utils/cython_bbox.c', '../../../lib/utils/cython_bbox.pyx'],
+        include_dirs = [np.get_include(), '/lib/utils'],
+        extra_compile_args=[],
+    )
+    2、在cmd中使用cd命令到解压后的文件夹下…/data/coco/PythonAPI目录下执行代码：
+    python setup.py build_ext --inplace
+    python setup.py build_ext install
+    会在会在coco\PythonAPI\build 目录中生成lib.win-amd64-3.6/temp.win-amd64-3.6目录
+    会在 \data\coco\PythonAPI\lib\utils 生成cython_bbox.cp36-win_amd64.pyd文件，将其复制到 根目录\lib\utils目录中
+
+
