@@ -17,7 +17,6 @@ from __future__ import print_function
 
 import argparse
 import os
-
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -25,19 +24,11 @@ import tensorflow as tf
 from lib.config import config as cfg
 from lib.utils.nms_wrapper import nms
 from lib.utils.test import im_detect
-# from lib.nets.resnet_v1 import resnetv1
 from lib.nets.vgg16 import vgg16
 from lib.utils.timer import Timer
-from lib.utils import path_helper
 import time
 from socket import *
 
-# CLASSES = ('__background__',
-#            'aeroplane', 'bicycle', 'bird', 'boat',
-#            'bottle', 'bus', 'car', 'cat', 'chair',
-#            'cow', 'diningtable', 'dog', 'horse',
-#            'motorbike', 'person', 'pottedplant',
-#            'sheep', 'sofa', 'train', 'tvmonitor')
 
 CLASSES = ('__background__',  # always index 0
                           'crow', 'magpie', 'pigeon', 'swallow', 'sparrow', 'airplane',  'person')
@@ -48,6 +39,7 @@ NETS = {'vgg16': ('vgg16_faster_rcnn_iter_70000.ckpt',), 'res101': ('vgg16_faste
 DATASETS = {'pascal_voc': ('voc_2007_trainvWrote snapshot to: D:\pyworkspace\Faster-RCNN-TensorFlow-Python3-master\default\voc_2007_trainval\default_bird\vgg16_faster_rcnn_iter_1400.ckptal',), 'pascal_voc_0712': ('voc_2007_trainval+voc_2012_trainval',)}
 
 
+# picture detection drawing
 def vis_detections(im, class_name, dets, inds, CONF_THRESH):
     """Draw detected bounding boxes."""
     im = im[:, :, (2, 1, 0)]
@@ -56,7 +48,6 @@ def vis_detections(im, class_name, dets, inds, CONF_THRESH):
     for i in inds:
         bbox = dets[i, :4]
         score = dets[i, -1]
-
         ax.add_patch(
             plt.Rectangle((bbox[0], bbox[1]),
                           bbox[2] - bbox[0],
@@ -67,7 +58,6 @@ def vis_detections(im, class_name, dets, inds, CONF_THRESH):
                 '{:s} {:.3f}'.format(class_name, score),
                 bbox=dict(facecolor='blue', alpha=0.5),
                 fontsize=14, color='white')
-
     ax.set_title(('{} detections with '
                   'p({} | box) >= {:.1f}').format(class_name, class_name,
                                                   CONF_THRESH),
@@ -78,8 +68,38 @@ def vis_detections(im, class_name, dets, inds, CONF_THRESH):
     plt.draw()
 
 
+# picture detection
+def demo(sess, net, image_name):
+    """Detect object classes in an image using pre-computed object proposals."""
+    # Load the demo image
+    im_file = os.path.join(cfg.FLAGS2["data_dir"], 'demo', image_name)
+    im = cv2.imread(im_file)
+    # im = frame
+    # Detect all object classes and regress object bounds
+    timer = Timer()
+    timer.tic()
+    scores, boxes = im_detect(sess, net, im)
+    timer.toc()
+    # print('Detection took {:.3f}s for {:d} object proposals'.format(timer.total_time, boxes.shape[0]))
+    # Visualize detections for each class
+    CONF_THRESH = 0.5
+    NMS_THRESH = 0.1
+    for cls_ind, cls in enumerate(CLASSES[1:]):
+        cls_ind += 1  # because we skipped background
+        cls_boxes = boxes[:, 4 * cls_ind:4 * (cls_ind + 1)]
+        cls_scores = scores[:, cls_ind]
+        dets = np.hstack((cls_boxes,
+                          cls_scores[:, np.newaxis])).astype(np.float32)
+        keep = nms(dets, NMS_THRESH)
+        dets = dets[keep, :]
+        inds = np.where(dets[:, -1] >= CONF_THRESH)[0]
+        if len(inds) == 0:
+            return
+        vis_detections(im, cls, dets, inds, CONF_THRESH)  # 图片检测构图
+
+
 # 内容、时间、摄像头编号
-def socket_client_target_detection(detectContent, detectTime, cameraNumber):
+def socket_client_target_detection(detectContent, detectTime, cameraNumber, images, targetNum):
     # create socket
     tcp_client_socket = socket(AF_INET, SOCK_STREAM)
     # target info
@@ -96,88 +116,52 @@ def socket_client_target_detection(detectContent, detectTime, cameraNumber):
     tcp_client_socket.close()
 
 
-# 图片检测
-def demo(sess, net, image_name):
-    """Detect object classes in an image using pre-computed object proposals."""
-
-    # Load the demo image
-    im_file = os.path.join(cfg.FLAGS2["data_dir"], 'demo', image_name)
-    im = cv2.imread(im_file)
-    # im = frame
-    # Detect all object classes and regress object bounds
-    timer = Timer()
-    timer.tic()
-    scores, boxes = im_detect(sess, net, im)
-    timer.toc()
-
-    # print('Detection took {:.3f}s for {:d} object proposals'.format(timer.total_time, boxes.shape[0]))
-    # Visualize detections for each class
-    CONF_THRESH = 0.01
-    NMS_THRESH = 0.1
-    for cls_ind, cls in enumerate(CLASSES[1:]):
-        cls_ind += 1  # because we skipped background
-        cls_boxes = boxes[:, 4 * cls_ind:4 * (cls_ind + 1)]
-        cls_scores = scores[:, cls_ind]
-        dets = np.hstack((cls_boxes,
-                          cls_scores[:, np.newaxis])).astype(np.float32)
-        keep = nms(dets, NMS_THRESH)
-        dets = dets[keep, :]
-
-        inds = np.where(dets[:, -1] >= CONF_THRESH)[0]
-        if len(inds) == 0:
-            return
-
-        vis_detections(im, cls, dets, inds, CONF_THRESH)  # 图片检测构图
-
-
+# video detection drawing
 def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CONF_THRESH):
     """Draw detected bounding boxes."""
     if len(inds) == 0:
         cv2.imshow("video capture", im)
     else:
+        targetNum = 0
         for i in inds:
-            bbox = dets[i, :4]  # 坐标
-            score = dets[i, -1]  # 置信度
+            bbox = dets[i, :4]  # coordinate
+            score = dets[i, -1]  # degree of confidence
             x1 = bbox[0]
             y1 = bbox[1]
             x2 = bbox[2]
             y2 = bbox[3]
             end_time = time.time()
-            current_time = time.ctime()  # 获得当前系统时间
+            current_time = time.ctime()  # current time
             fps = round(1/(end_time - start_time), 2)
             if class_name == 'sparrow' or class_name == 'crow' or class_name == 'magpie' or class_name == 'pigeon' or class_name == 'swallow':
                 cv2.rectangle(im, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                targetNum += 1
             elif class_name == 'airplane':
                 cv2.rectangle(im, (x1, y1), (x2, y2), (0, 255, 0), 2)
             elif class_name == 'person':
                 cv2.rectangle(im, (x1, y1), (x2, y2), (255, 0, 0), 2)
 
-            cv2.putText(im, str(round(score, 2)), (int(x1), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)  # 显示物体的得分
-            cv2.putText(im, str(class_name), (int(x1+70), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)  # 显示物体的类别
-            cv2.putText(im, str(current_time), (30,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # 显示时间
-            cv2.putText(im, "fps:"+str(fps), (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # 显示帧率
-            cv2.putText(im, "takes time :"+str(round(time_takes*1000, 1))+"ms", (30, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # 显示检测时间
-
-    cv2.imshow("video capture", im)
+            cv2.putText(im, str(round(score, 2)), (int(x1), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)  # score
+            cv2.putText(im, str(class_name), (int(x1+70), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)  # type
+            cv2.putText(im, str(current_time), (30,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # drawing time
+            cv2.putText(im, "fps:"+str(fps), (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # frame frequency
+            cv2.putText(im, "takes time :"+str(round(time_takes*1000, 1))+"ms", (30, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # detection time
+        if targetNum > 0:
+            return im, targetNum
+    # cv2.imshow("video capture", im)
 
 
 # 视频检测
 def demo_video(sess, net, frame, cameraNumber):
     """Detect object classes in an image using pre-computed object proposals."""
-
-    # Load the demo image
-    # im_file = os.path.join(cfg.FLAGS2["data_dir"], 'demo', image_name)
-    # im = cv2.imread(im_file)
     im = frame
-    # Detect all object classes and regress object bounds
     timer = Timer()
     timer.tic()
     scores, boxes = im_detect(sess, net, im)
     timer.toc()
-
     # print('Detection took {:.3f}s for {:d} object proposals'.format(timer.total_time, boxes.shape[0]))
     # Visualize detections for each class
-    CONF_THRESH = 0.4 # 阈值（图片里用0.5了）
+    CONF_THRESH = 0.4  # threshold
     NMS_THRESH = 0.1
     for cls_ind, cls in enumerate(CLASSES[1:]):
         cls_ind += 1  # because we skipped background
@@ -189,8 +173,9 @@ def demo_video(sess, net, frame, cameraNumber):
         dets = dets[keep, :]
         inds = np.where(dets[:, -1] >= CONF_THRESH)[0]
 
-        # socket_client_target_detection(cls, timer.start_time, cameraNumber)
-        vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)  # 视频检测构图
+        images, targetNum = vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)
+        socket_client_target_detection(cls, timer.start_time, cameraNumber, images, targetNum)
+
 
 
 def parse_args():
