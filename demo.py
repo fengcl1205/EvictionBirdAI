@@ -122,7 +122,6 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
     if len(inds) == 0:
         cv2.imshow("video capture", im)
     else:
-        targetNum = 0
         for i in inds:
             bbox = dets[i, :4]  # coordinate
             score = dets[i, -1]  # degree of confidence
@@ -135,7 +134,6 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
             fps = round(1/(end_time - start_time), 2)
             if class_name == 'sparrow' or class_name == 'crow' or class_name == 'magpie' or class_name == 'pigeon' or class_name == 'swallow':
                 cv2.rectangle(im, (x1, y1), (x2, y2), (0, 0, 255), 2)
-                targetNum += 1
             elif class_name == 'airplane':
                 cv2.rectangle(im, (x1, y1), (x2, y2), (0, 255, 0), 2)
             elif class_name == 'person':
@@ -146,9 +144,7 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
             cv2.putText(im, str(current_time), (30,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # drawing time
             cv2.putText(im, "fps:"+str(fps), (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # frame frequency
             cv2.putText(im, "takes time :"+str(round(time_takes*1000, 1))+"ms", (30, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # detection time
-        if targetNum > 0:
-            return im, targetNum
-    # cv2.imshow("video capture", im)
+    cv2.imshow("video capture", im)
 
 
 # 视频检测
@@ -172,10 +168,8 @@ def demo_video(sess, net, frame, cameraNumber):
         keep = nms(dets, NMS_THRESH)
         dets = dets[keep, :]
         inds = np.where(dets[:, -1] >= CONF_THRESH)[0]
-
-        images, targetNum = vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)
-        socket_client_target_detection(cls, timer.start_time, cameraNumber, images, targetNum)
-
+        vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)
+        # socket_client_target_detection(cls, timer.start_time, cameraNumber, images, targetNum)
 
 
 def parse_args():
