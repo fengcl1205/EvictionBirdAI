@@ -82,7 +82,7 @@ def demo(sess, net, image_name):
     timer.toc()
     # print('Detection took {:.3f}s for {:d} object proposals'.format(timer.total_time, boxes.shape[0]))
     # Visualize detections for each class
-    CONF_THRESH = 0.5
+    CONF_THRESH = 0.4
     NMS_THRESH = 0.1
     for cls_ind, cls in enumerate(CLASSES[1:]):
         cls_ind += 1  # because we skipped background
@@ -94,7 +94,7 @@ def demo(sess, net, image_name):
         dets = dets[keep, :]
         inds = np.where(dets[:, -1] >= CONF_THRESH)[0]
         if len(inds) == 0:
-            return
+            continue
         vis_detections(im, cls, dets, inds, CONF_THRESH)  # 图片检测构图
 
 
@@ -219,27 +219,27 @@ if __name__ == '__main__':
 
     print('Loaded network {:s}'.format(tfmodel))
     # 视频
-    cap = cv2.VideoCapture(r'D:\\pyworkspace\EvictionBirdAI\\data\\video\\05.mp4')
-    while(True):
-        ret, frame = cap.read()
-        demo_video(sess, net, frame, 1)
-        key = cv2.waitKey(1)
-        if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
-            break
-        # if ret == False:
-        #     break
-
-    cap.release()
-    cv2.destroyAllWindows()
+    # cap = cv2.VideoCapture(r'D:\\pyworkspace\EvictionBirdAI\\data\\video\\06.mp4')
+    # while(True):
+    #     ret, frame = cap.read()
+    #     demo_video(sess, net, frame, 1)
+    #     key = cv2.waitKey(1)
+    #     if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
+    #         break
+    #     # if ret == False:
+    #     #     break
+    #
+    # cap.release()
+    # cv2.destroyAllWindows()
 
     # 图片
-    # im_names = ['1.jpg','2.jpg','3.jpg','4.jpg','5.jpg','6.jpg','7.jpg','8.jpg','9.jpg','10.jpg','11.jpg','12.jpg','13.jpg','14.jpg','15.jpg']
-    # # im_names = ['0007.jpg']
-    # for im_name in im_names:
-    #     print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-    #     print('Demo for data/demo/{}'.format(im_name))
-    #     demo(sess, net, im_name)
-    # plt.show()
+    im_names = ['1.jpg','2.jpg','3.jpg','4.jpg','5.jpg','6.jpg','7.jpg','8.jpg','9.jpg','10.jpg','11.jpg','12.jpg','13.jpg','14.jpg','15.jpg']
+    # im_names = ['0007.jpg']
+    for im_name in im_names:
+        print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+        print('Demo for data/demo/{}'.format(im_name))
+        demo(sess, net, im_name)
+    plt.show()
 
 
 
