@@ -82,7 +82,7 @@ def demo(sess, net, image_name):
     timer.toc()
     # print('Detection took {:.3f}s for {:d} object proposals'.format(timer.total_time, boxes.shape[0]))
     # Visualize detections for each class
-    CONF_THRESH = 0.5
+    CONF_THRESH = 0.4
     NMS_THRESH = 0.1
     for cls_ind, cls in enumerate(CLASSES[1:]):
         cls_ind += 1  # because we skipped background
@@ -94,7 +94,7 @@ def demo(sess, net, image_name):
         dets = dets[keep, :]
         inds = np.where(dets[:, -1] >= CONF_THRESH)[0]
         if len(inds) == 0:
-            return
+            continue
         vis_detections(im, cls, dets, inds, CONF_THRESH)  # 图片检测构图
 
 
@@ -219,7 +219,7 @@ if __name__ == '__main__':
 
     print('Loaded network {:s}'.format(tfmodel))
     # 视频
-    cap = cv2.VideoCapture(r'D:\\pyworkspace\EvictionBirdAI\\data\\video\\05.mp4')
+    cap = cv2.VideoCapture(os.getcwd() + '/data/video/05.mp4')
     while(True):
         ret, frame = cap.read()
         demo_video(sess, net, frame, 1)
