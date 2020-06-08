@@ -19,17 +19,26 @@ import os
 import cv2
 import numpy as np
 import tensorflow as tf
-from lib.config import config as cfg
 from lib.utils.nms_wrapper import nms
 from lib.utils.test import im_detect
 from lib.nets.vgg16 import vgg16
 from lib.utils.timer import Timer
 import time
 from socket import *
+import argparse
 
 
 CLASSES = ('__background__',  # always index 0
                           'crow', 'magpie', 'pigeon', 'swallow', 'sparrow', 'airplane',  'person')
+
+
+def parse_args():
+    """Parse input arguments."""
+    parser = argparse.ArgumentParser(description='disperse bird apply ')
+    parser.add_argument('--url', dest='camera_url', help='please input camera url')
+    parser.add_argument('--project_address', dest='project_address', help='please input EvictionBirdAI project address')
+    args = parser.parse_args()
+    return args
 
 
 def socket_client_target_detection(detectCls, detectNum, detectImg, detectTime, cameraNumber, disperse_sign):
@@ -68,7 +77,6 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
             cv2.rectangle(im, (x1, y1), (x2, y2), (0, 255, 0), 2)
         elif class_name == 'person':
             cv2.rectangle(im, (x1, y1), (x2, y2), (255, 0, 0), 2)
-
         cv2.putText(im, str(round(score, 2)), (int(x1), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)  # score
         cv2.putText(im, str(class_name), (int(x1+70), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)  # type
         # cv2.putText(im, str(current_time), (30,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # drawing time
@@ -78,7 +86,7 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
     return im
 
 
-def demo_video(sess, net, frame, cameraNumber):
+def demo_video(sess, net, frame, camera_url):
     """Detect object classes in an image using pre-computed object proposals."""
     im = frame
     timer = Timer()
@@ -97,16 +105,15 @@ def demo_video(sess, net, frame, cameraNumber):
         keep = nms(dets, NMS_THRESH)
         dets = dets[keep, :]
         inds = np.where(dets[:, -1] >= CONF_THRESH)[0]
-        # 检测出目标
         if cls == 'crow' or cls == 'magpie' or cls == 'pigeon' or cls == 'swallow' \
                 or cls == 'sparrow' and len(inds) != 0:
             if time.time() - timer_trigger.start_time > residence_time:
                 images = vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)
-                socket_client_target_detection(cls, len(inds), images, time.ctime(), cameraNumber, True)
+                socket_client_target_detection(cls, len(inds), images, time.ctime(), camera_url, True)
                 timer_trigger.tic()  # 修改起始时间
             else:
                 images = vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)
-                socket_client_target_detection(cls, len(inds), images, time.ctime(), cameraNumber, False)
+                socket_client_target_detection(cls, len(inds), images, time.ctime(), camera_url, False)
         elif cls == 'airplane' and len(inds) != 0:
             pass
         elif cls == 'person' and len(inds) != 0:
@@ -116,13 +123,16 @@ def demo_video(sess, net, frame, cameraNumber):
 
 
 if __name__ == '__main__':
+    args = parse_args()
+    camera_url = args.camera_url
+    project_address = args.project_address
+
     demonet = 'vgg16'
-    tfmodel = os.getcwd() + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_200000.ckpt'
+    tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_200000.ckpt'
     if not os.path.isfile(tfmodel + '.meta'):
         print(tfmodel)
         raise IOError(('{:s} not found.\nDid you download the proper networks from '
                        'our server and place them properly?').format(tfmodel + '.meta'))
-
     # set config
     tfconfig = tf.ConfigProto(allow_soft_placement=True)
     tfconfig.gpu_options.allow_growth = True
@@ -141,15 +151,17 @@ if __name__ == '__main__':
                             tag='default', anchor_scales=[8, 16, 32, 64])
     saver = tf.train.Saver()
     saver.restore(sess, tfmodel)
-
+    residence_time = 2
     print('Loaded network {:s}'.format(tfmodel))
-    residence_time = 2  # 停留时间
     timer_trigger = Timer()
     timer_trigger.tic()
-    cap = cv2.VideoCapture(r'D:\\pyworkspace\EvictionBirdAI\\data\\video\\05.mp4')
-    while(True):
+    # url = 'rtsp://admin:123456@192.168.1.13:554'
+    cap = cv2.VideoCapture(camera_url)
+    # cap = cv2.VideoCapture(r'D:\\pyworkspace\EvictionBirdAI\\data\\video\\05.mp4')
+    while (cap.isOpened()):
+    # while(True):
         ret, frame = cap.read()
-        demo_video(sess, net, frame, 1)
+        demo_video(sess, net, frame, camera_url)
         key = cv2.waitKey(1)
         if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
             break
