@@ -112,11 +112,13 @@ ubuntu 1804 部署说明
 
 9.supervisor
     安装：
-    sudo apt-get install python-setuptools
-    easy_install supervisor
-    echo_supervisord_conf > /etc/supervisord.conf
+    sudo apt-get install supervisor
+    sudo chmod 777 /var/run
+    sudo chmod 777 /etc/supervisor
+    创建 qnapp.conf
+    sudo touch /etc/supervisor/conf.d/qnapp.conf
     配置：
-    sudo vi /etc/supervisord.conf
+    sudo vi /etc/supervisor/conf.d/qnapp.conf
     文件末尾添加
         [program:camera_num01]
         command=/home/ders/anaconda3/bin/python /usr/local/pyworkspace/EvictionBirdAI/demo.py
@@ -141,3 +143,6 @@ ubuntu 1804 部署说明
         stderr_logfile=/usr/local/pyworkspace/log/%(program_name)s_err.log
 
         。。。
+    sudo supervisorctl update
+    sudo supervisorctl stop all
+    sudo supervisorctl start 任务名
