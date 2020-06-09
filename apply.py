@@ -37,6 +37,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='disperse bird apply ')
     parser.add_argument('--url', dest='camera_url', help='please input camera url')
     parser.add_argument('--project_address', dest='project_address', help='please input EvictionBirdAI project address')
+    parser.add_argument('--gpu_num', dest='gpu_num', help='please input gpu number')
     args = parser.parse_args()
     return args
 
@@ -126,6 +127,7 @@ if __name__ == '__main__':
     args = parse_args()
     camera_url = args.camera_url
     project_address = args.project_address
+    # gpu_num = args.gpu_num
 
     demonet = 'vgg16'
     tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_200000.ckpt'
