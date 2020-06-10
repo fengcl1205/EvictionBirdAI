@@ -1,5 +1,16 @@
 #!/usr/bin/env python
 
+# --------------------------------------------------------
+# Tensorflow Faster R-CNN
+# Licensed under The MIT License [see LICENSE for details]
+# Written by Xinlei Chen, based on code from Ross Girshick
+# --------------------------------------------------------
+
+"""
+Demo script showing detections in sample images.
+
+See README.md for installation instructions before running.
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -15,59 +26,23 @@ from lib.utils.timer import Timer
 import time
 from socket import *
 import argparse
-import threading
-from business.utils import yaml_helper
 
 
-CLASSES = ('__background__',  'crow', 'magpie', 'pigeon', 'swallow', 'sparrow', 'airplane',  'person')
-# 当前触发报警的"连续"识别次数
-residence_frame = 0
-
-
-# 接收摄影机串流影像，采用多线程的方式，降低缓冲区栈图帧的问题。
-class IpCamCapture:
-    def __init__(self, url):
-        self.url = url
-        self.Frame = list()
-        self.status = False
-        self.isstop = False
-        self.capture = cv2.VideoCapture(self.url)
-
-    def start(self):
-        print('ipcam started!')
-        # 把程序放进子线程，daemon=True 表示该线程会随着主线程关闭而关闭。
-        threading.Thread(target=self.query_frame, daemon=True, args=()).start()
-
-    # 停止无限循环的开关
-    def stop(self):
-        self.isstop = True
-        print('ipcam stopped!')
-
-    # 当有需要影像时，再回传最新的影像。
-    def get_frame(self):
-        return self.Frame
-
-    def query_frame(self):
-        while not self.isstop:
-            self.status, self.Frame = self.capture.read()
-            # 摄像头传来数据由于转义等未知原因无法读取时，重新调用摄像头
-            if not self.status:
-                print('视频流发现问题，矫正中...')
-                self.capture = cv2.VideoCapture(self.url)
-                self.status, self.Frame = self.capture.read()
-        self.capture.release()
+CLASSES = ('__background__',  # always index 0
+                          'crow', 'magpie', 'pigeon', 'swallow', 'sparrow', 'airplane',  'person')
 
 
 def parse_args():
     """Parse input arguments."""
     parser = argparse.ArgumentParser(description='disperse bird apply ')
-    parser.add_argument('--camera_url', dest='camera_url', help='please input camera url')
+    parser.add_argument('--url', dest='camera_url', help='please input camera url')
+    parser.add_argument('--project_address', dest='project_address', help='please input EvictionBirdAI project address')
     parser.add_argument('--gpu_num', dest='gpu_num', help='please input gpu number')
     args = parser.parse_args()
     return args
 
 
-def socket_client_target_detection(detect_cls, detect_num, detect_img, detect_time, camera_number, disperse_sign):
+def socket_client_target_detection(detectCls, detectNum, detectImg, detectTime, cameraNumber, disperse_sign):
     # create socket
     tcp_client_socket = socket(AF_INET, SOCK_STREAM)
     # target info
@@ -76,7 +51,7 @@ def socket_client_target_detection(detect_cls, detect_num, detect_img, detect_ti
     # connet servier
     tcp_client_socket.connect((server_ip, server_port))
     # send info
-    send_data = {'detectContent': detect_cls, 'detectTime': detect_time, 'cameraNumber': camera_number}
+    send_data = {'detectContent': detectCls, 'detectTime': detectTime, 'cameraNumber': cameraNumber}
     tcp_client_socket.send(bytes(str(send_data), encoding='gbk'))
     # Return data
     recvData = tcp_client_socket.recv(1024)
@@ -103,29 +78,24 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
             cv2.rectangle(im, (x1, y1), (x2, y2), (0, 255, 0), 2)
         elif class_name == 'person':
             cv2.rectangle(im, (x1, y1), (x2, y2), (255, 0, 0), 2)
-        '''
         cv2.putText(im, str(round(score, 2)), (int(x1), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)  # score
         cv2.putText(im, str(class_name), (int(x1+70), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)  # type
-        cv2.putText(im, str(current_time), (30,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # drawing time
+        # cv2.putText(im, str(current_time), (30,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # drawing time
         cv2.putText(im, "fps:"+str(fps), (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # frame frequency
         cv2.putText(im, "takes time :"+str(round(time_takes*1000, 1))+"ms", (30, 90), cv2.FONT_HERSHEY_SIMPLEX,
                     1, (255, 255, 255), 2)  # detection time
-        '''
     return im
 
 
-def demo_video(sess, net, frame, camera_url, max_residence_frame):
-    """Detect object classes in an image usi， ng pre-computed object proposals."""
-    global residence_frame
+def demo_video(sess, net, frame, camera_url):
+    """Detect object classes in an image using pre-computed object proposals."""
     im = frame
     timer = Timer()
     timer.tic()
     scores, boxes = im_detect(sess, net, im)
     timer.toc()
-    # 标识是否发送报警通讯
-    warning_flag = False
     # Visualize detections for each class
-    CONF_THRESH = 0.7  # threshold
+    CONF_THRESH = 0.6  # threshold
     NMS_THRESH = 0.1
     for cls_ind, cls in enumerate(CLASSES[1:]):
         cls_ind += 1  # because we skipped background
@@ -138,28 +108,26 @@ def demo_video(sess, net, frame, camera_url, max_residence_frame):
         inds = np.where(dets[:, -1] >= CONF_THRESH)[0]
         if cls == 'crow' or cls == 'magpie' or cls == 'pigeon' or cls == 'swallow' \
                 or cls == 'sparrow' and len(inds) != 0:
-            residence_frame += 1
-            if residence_frame == max_residence_frame:
+            if time.time() - timer_trigger.start_time > residence_time:
                 images = vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)
                 socket_client_target_detection(cls, len(inds), images, time.ctime(), camera_url, True)
                 timer_trigger.tic()  # 修改起始时间
-                residence_frame = 0
-                warning_flag = True
+            else:
+                images = vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)
+                socket_client_target_detection(cls, len(inds), images, time.ctime(), camera_url, False)
+        elif cls == 'airplane' and len(inds) != 0:
+            pass
+        elif cls == 'person' and len(inds) != 0:
+            pass
         else:
-            residence_frame = 0
-        if not warning_flag:
-            images = vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)
-            socket_client_target_detection(cls, len(inds), images, time.ctime(), camera_url, False)
+            pass
 
 
 if __name__ == '__main__':
     args = parse_args()
     camera_url = args.camera_url
+    project_address = args.project_address
     # gpu_num = args.gpu_num
-    project_address = os.path.abspath(os.path.dirname(os.path.dirname(__file__))) + '/EvictionBirdAI'
-    business_path_config = yaml_helper.get_data_from_yaml(project_address + '/business/config/business_config.yaml')
-    # 触发报警的最大"连续"识别次数
-    max_residence_frame = business_path_config['max_lazy_frequency']
 
     demonet = 'vgg16'
     tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_200000.ckpt'
@@ -185,23 +153,48 @@ if __name__ == '__main__':
                             tag='default', anchor_scales=[8, 16, 32, 64])
     saver = tf.train.Saver()
     saver.restore(sess, tfmodel)
+    residence_time = 2
     print('Loaded network {:s}'.format(tfmodel))
     timer_trigger = Timer()
     timer_trigger.tic()
     # url = 'rtsp://admin:123456@192.168.1.13:554'
-    # cap = cv2.VideoCapture(camera_url)
+    cap = cv2.VideoCapture(camera_url)
     # cap = cv2.VideoCapture(r'D:\\pyworkspace\EvictionBirdAI\\data\\video\\05.mp4')
-    ipcam = IpCamCapture(camera_url)
-    ipcam.start()
-    # 暂停1秒，确保影像已经填充队列
-    time.sleep(1)
-    print(str(time.time()) + ' Monitoring ...')
-    while True:
-        frame = ipcam.get_frame()
-        demo_video(sess, net, frame, camera_url, max_residence_frame)
+    while (cap.isOpened()):
+    # while(True):
+        ret, frame = cap.read()
+        demo_video(sess, net, frame, camera_url)
         key = cv2.waitKey(1)
         if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
-            ipcam.stop()
             break
-    print(str(time.time()) + ' 识别系统已关闭')
+        # if ret == False:
+        #     break
+
+    cap.release()
     cv2.destroyAllWindows()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,11 @@
+# 触发报警的最大"连续"识别次数
+max_lazy_frequency: 2
+
+# 识别图像存储路径
+target_img_storage_path: /mnt/
+
+# 应用系统地址
+application_system_url:
+
+# 大屏系统地址
+large_screen_system_url:
