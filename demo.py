@@ -18,6 +18,8 @@ from lib.utils.timer import Timer
 import time
 from socket import *
 import threading
+from business.utils import yaml_helper
+import multiprocessing as mp
 
 
 CLASSES = ('__background__',  # always index 0
@@ -106,7 +108,7 @@ def demo(sess, net, image_name):
     timer.toc()
     # print('Detection took {:.3f}s for {:d} object proposals'.format(timer.total_time, boxes.shape[0]))
     # Visualize detections for each class
-    CONF_THRESH = 0.5
+    CONF_THRESH = 0.7
     NMS_THRESH = 0.1
     for cls_ind, cls in enumerate(CLASSES[1:]):
         cls_ind += 1  # because we skipped background
@@ -172,7 +174,7 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
 
 
 # 视频检测
-def demo_video(sess, net, frame, cameraNumber):
+def demo_video(sess, net, frame, camera_url, max_residence_frame):
     """Detect object classes in an image using pre-computed object proposals."""
     im = frame
     timer = Timer()
@@ -181,7 +183,7 @@ def demo_video(sess, net, frame, cameraNumber):
     timer.toc()
     # print('Detection took {:.3f}s for {:d} object proposals'.format(timer.total_time, boxes.shape[0]))
     # Visualize detections for each class
-    CONF_THRESH = 0.4  # threshold
+    CONF_THRESH = 0.7  # threshold
     NMS_THRESH = 0.1
     for cls_ind, cls in enumerate(CLASSES[1:]):
         cls_ind += 1  # because we skipped background
@@ -208,15 +210,63 @@ def parse_args():
     return args
 
 
+def picture_deal():
+    # 图片
+    im_names = ['1.jpg','2.jpg','3.jpg','4.jpg','5.jpg','6.jpg','7.jpg','8.jpg','9.jpg','10.jpg','11.jpg','12.jpg','13.jpg','14.jpg','15.jpg']
+    # im_names = ['0007.jpg']
+    for im_name in im_names:
+        print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+        print('Demo for data/demo/{}'.format(im_name))
+        demo(sess, net, im_name)
+    plt.show()
+
+
+def video_deal():
+    cap = cv2.VideoCapture(project_address + '/data/video/07.mp4')
+    # while (cap.isOpened()):
+    print('Monitoring')
+    while (True):
+        ret, frame = cap.read()
+        if not (ret):
+            print('略过')
+            cap = cv2.VideoCapture('rtsp://admin:123456@192.168.1.13:554')
+            ret, frame = cap.read()
+            demo_video(sess, net, frame, 1)
+            key = cv2.waitKey(1)
+            if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
+                break
+            continue
+        demo_video(sess, net, frame, 1)
+        key = cv2.waitKey(1)
+        if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
+            break
+
+
+def cam(queue, camera_url):
+    ipcam = IpCamCapture(camera_url)
+    ipcam.start()
+    # 暂停1秒，确保影像已经填充
+    time.sleep(1)
+    print(str(time.time()) + ' Monitoring ...')
+    while True:
+        frame = ipcam.get_frame()
+        demo_video(sess, net, frame, camera_url, max_residence_frame)
+        key = cv2.waitKey(1)
+        if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
+            ipcam.stop()
+            break
+    print(str(time.time()) + ' 识别系统已关闭')
+    cv2.destroyAllWindows()
+
+
 if __name__ == '__main__':
     args = parse_args()
-
-    # model path
-    demonet = args.demo_net
-    dataset = args.dataset
-    # tfmodel = os.path.join('output', demonet, DATASETS[dataset][0], 'default', NETS[demonet][0])
+    project_address = os.path.abspath(os.path.dirname(os.path.dirname(__file__))) + '/EvictionBirdAI'
+    business_path_config = yaml_helper.get_data_from_yaml(project_address + '/business/config/business_config.yaml')
+    # 触发报警的最大"连续"识别次数
+    max_residence_frame = business_path_config['max_lazy_frequency']
     demonet = 'vgg16'
-    tfmodel = os.getcwd()+ '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_200000.ckpt'
+    tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_200000.ckpt'
     if not os.path.isfile(tfmodel + '.meta'):
         print(tfmodel)
         raise IOError(('{:s} not found.\nDid you download the proper networks from '
@@ -235,61 +285,34 @@ if __name__ == '__main__':
         raise NotImplementedError
 
     n_classes = len(CLASSES)
-    # create the structure of the net having a certain shape (which depends on the number of classes) 
+    # create the structure of the net having a certain shape (which depends on the number of classes)
     net.create_architecture(sess, "TEST", n_classes,
                             tag='default', anchor_scales=[8, 16, 32, 64])
     saver = tf.train.Saver()
     saver.restore(sess, tfmodel)
 
     print('Loaded network {:s}'.format(tfmodel))
-    # 视频
-    '''
-    # cap = cv2.VideoCapture(os.getcwd() + '/data/video/07.mp4')
-    cap = cv2.VideoCapture('rtsp://admin:123456@192.168.1.13:554')
-    # cap = cv2.VideoCapture(r'D:/pyworkspace/EvictionBirdAI/data/video/05.mp4')
-    # while (cap.isOpened()):
-    print('Monitoring')
-    while (True):
-        ret, frame = cap.read()
-        if not (ret):
-            print('略过')
-            cap = cv2.VideoCapture('rtsp://admin:123456@192.168.1.13:554')
-            ret, frame = cap.read()
-            demo_video(sess, net, frame, 1)
-            key = cv2.waitKey(1)
-            if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
-                break
-            continue
-        demo_video(sess, net, frame, 1)
-        key = cv2.waitKey(1)
-        if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
-            break
-    '''
-    camera_url = 'rtsp://admin:123456@192.168.1.13:554'
-    ipcam = IpCamCapture(camera_url)
-    ipcam.start()
-    # 暂停1秒，确保影像已经填充
-    time.sleep(1)
-    while True:
-        frame = ipcam.get_frame()
-        demo_video(sess, net, frame, camera_url)
-        key = cv2.waitKey(1)
-        if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
-            ipcam.stop()
-            break
 
-    # 图片
-    # im_names = ['1.jpg','2.jpg','3.jpg','4.jpg','5.jpg','6.jpg','7.jpg','8.jpg','9.jpg','10.jpg','11.jpg','12.jpg','13.jpg','14.jpg','15.jpg']
-    # # im_names = ['0007.jpg']
-    # for im_name in im_names:
-    #     print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-    #     print('Demo for data/demo/{}'.format(im_name))
-    #     demo(sess, net, im_name)
-    # plt.show()
+    data_sources = 'local_video'
 
-
-
-
+    if data_sources == 'net_video':
+        # 网络摄像头
+        camera_url_list = business_path_config['camera_url']
+        mp.set_start_method(method='spawn')  # init
+        queue = mp.Queue(maxsize=10)
+        processes = list()
+        for camera_url in camera_url_list:
+            processes.append(mp.Process(target=cam, args=(queue, camera_url)))
+        for process in processes:
+            process.daemon = True
+            process.start()
+        for process in processes:
+            process.join()
+    elif data_sources == 'local_video':
+        cap = cv2.VideoCapture(os.getcwd() + '/data/video/07.mp4')
+        video_deal()
+    elif data_sources == 'local_pic':
+        video_deal()
 
 
 
