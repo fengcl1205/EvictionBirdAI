@@ -231,12 +231,12 @@ def video_deal():
             print('略过')
             cap = cv2.VideoCapture('rtsp://admin:123456@192.168.1.13:554')
             ret, frame = cap.read()
-            demo_video(sess, net, frame, 1)
+            demo_video(sess, net, frame, 1, '')
             key = cv2.waitKey(1)
             if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
                 break
             continue
-        demo_video(sess, net, frame, 1)
+        demo_video(sess, net, frame, 1, '')
         key = cv2.waitKey(1)
         if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
             break
