@@ -17,6 +17,7 @@ from socket import *
 import argparse
 import threading
 from business.utils import yaml_helper
+import multiprocessing as mp
 
 
 CLASSES = ('__background__',  'crow', 'magpie', 'pigeon', 'swallow', 'sparrow', 'airplane',  'person')
@@ -61,7 +62,6 @@ class IpCamCapture:
 def parse_args():
     """Parse input arguments."""
     parser = argparse.ArgumentParser(description='disperse bird apply ')
-    parser.add_argument('--camera_url', dest='camera_url', help='please input camera url')
     parser.add_argument('--gpu_num', dest='gpu_num', help='please input gpu number')
     args = parser.parse_args()
     return args
@@ -125,7 +125,7 @@ def demo_video(sess, net, frame, camera_url, max_residence_frame):
     # 标识是否发送报警通讯
     warning_flag = False
     # Visualize detections for each class
-    CONF_THRESH = 0.7  # threshold
+    CONF_THRESH = 0.78  # threshold
     NMS_THRESH = 0.1
     for cls_ind, cls in enumerate(CLASSES[1:]):
         cls_ind += 1  # because we skipped background
@@ -142,7 +142,7 @@ def demo_video(sess, net, frame, camera_url, max_residence_frame):
             if residence_frame == max_residence_frame:
                 images = vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)
                 socket_client_target_detection(cls, len(inds), images, time.ctime(), camera_url, True)
-                timer_trigger.tic()  # 修改起始时间
+                timer.tic()  # 修改起始时间
                 residence_frame = 0
                 warning_flag = True
         else:
@@ -152,15 +152,7 @@ def demo_video(sess, net, frame, camera_url, max_residence_frame):
             socket_client_target_detection(cls, len(inds), images, time.ctime(), camera_url, False)
 
 
-if __name__ == '__main__':
-    args = parse_args()
-    camera_url = args.camera_url
-    # gpu_num = args.gpu_num
-    project_address = os.path.abspath(os.path.dirname(os.path.dirname(__file__))) + '/EvictionBirdAI'
-    business_path_config = yaml_helper.get_data_from_yaml(project_address + '/business/config/business_config.yaml')
-    # 触发报警的最大"连续"识别次数
-    max_residence_frame = business_path_config['max_lazy_frequency']
-
+def cam(queue, camera_url):
     demonet = 'vgg16'
     tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_200000.ckpt'
     if not os.path.isfile(tfmodel + '.meta'):
@@ -205,3 +197,24 @@ if __name__ == '__main__':
             break
     print(str(time.time()) + ' 识别系统已关闭')
     cv2.destroyAllWindows()
+
+
+if __name__ == '__main__':
+    args = parse_args()
+    # gpu_num = args.gpu_num
+    project_address = os.path.abspath(os.path.dirname(os.path.dirname(__file__))) + '/EvictionBirdAI'
+    business_path_config = yaml_helper.get_data_from_yaml(project_address + '/business/config/business_config.yaml')
+    # 触发报警的最大"连续"识别次数
+    max_residence_frame = business_path_config['max_lazy_frequency']
+    # 网络摄像头
+    camera_url_list = business_path_config['camera_url']
+    mp.set_start_method(method='spawn')  # init
+    queue = mp.Queue(maxsize=10)
+    processes = list()
+    for camera_url in camera_url_list:
+        processes.append(mp.Process(target=cam, args=(queue, camera_url)))
+    for process in processes:
+        process.daemon = True
+        process.start()
+    for process in processes:
+        process.join()
