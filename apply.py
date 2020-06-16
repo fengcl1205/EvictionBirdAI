@@ -13,11 +13,13 @@ from lib.utils.test import im_detect
 from lib.nets.vgg16 import vgg16
 from lib.utils.timer import Timer
 import time
+import datetime
 from socket import *
 import argparse
 import threading
 from business.utils import yaml_helper
 import multiprocessing as mp
+from ftplib import FTP, error_perm
 
 
 CLASSES = ('__background__',  'crow', 'magpie', 'pigeon', 'swallow', 'sparrow', 'airplane',  'person')
@@ -67,12 +69,49 @@ def parse_args():
     return args
 
 
+# 判断ftp路径是否存在
+def judge_ftp_path(ftp, path):
+    try:
+        ftp.cwd(path)
+    except error_perm:
+        try:
+            ftp.mkd(path)
+        except error_perm:
+            meg = 'Change directory failed!: %s' % path
+            print(meg)
+    return
+
+
+# 将检测到目前的图像存入ftp
+def detection_persistence(detect_time, images):
+    ftp = FTP()
+    try:
+        ip = business_path_config['ftp_ip_port'][0]
+        port = business_path_config['ftp_ip_port'][1]
+        user = business_path_config['ftp_ip_port'][2]
+        passwd = business_path_config['ftp_ip_port'][3]
+        ftp_path = business_path_config['ftp_ip_port'][4]
+        ftp.set_debuglevel(2)
+        ftp.connect(ip, port)
+        ftp.login(user, passwd)
+        bufsize = 4096  # 设置的缓冲区大小
+        ftp.cwd(ftp_path + '/capture_picture')
+        path = str(detect_time).split()[0]
+        judge_ftp_path(ftp, path)
+        ftp.storbinary('STOR %s' % os.path.basename(detect_time), images, bufsize)  # 上传文件
+        ftp.set_debuglevel(0)
+    except Exception as e:
+        print('INFO:', e)
+    finally:
+        ftp.quit()
+
+
 def socket_client_target_detection(detect_cls, detect_num, detect_img, detect_time, camera_number, disperse_sign):
     # create socket
     tcp_client_socket = socket(AF_INET, SOCK_STREAM)
     # target info
-    server_ip = ''
-    server_port = int('')
+    server_ip = business_path_config['application_system_ip_port'][0]
+    server_port = int(business_path_config['application_system_ip_port'][1])
     # connet servier
     tcp_client_socket.connect((server_ip, server_port))
     # send info
@@ -141,7 +180,11 @@ def demo_video(sess, net, frame, camera_url, max_residence_frame):
             residence_frame += 1
             if residence_frame == max_residence_frame:
                 images = vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)
-                socket_client_target_detection(cls, len(inds), images, time.ctime(), camera_url, True)
+                detect_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
+                socket_client_target_detection(cls, len(inds), images, detect_time, camera_url, True)
+                # 多线程写入磁盘
+                t_persistence = threading.Thread(target=detection_persistence, daemon=True, args=(detect_time, images)).start()
+                t_persistence.join()  # 设置主线程等待子线程结束
                 timer.tic()  # 修改起始时间
                 residence_frame = 0
                 warning_flag = True
@@ -180,9 +223,6 @@ def cam(queue, camera_url):
     print('Loaded network {:s}'.format(tfmodel))
     timer_trigger = Timer()
     timer_trigger.tic()
-    # url = 'rtsp://admin:123456@192.168.1.13:554'
-    # cap = cv2.VideoCapture(camera_url)
-    # cap = cv2.VideoCapture(r'D:\\pyworkspace\EvictionBirdAI\\data\\video\\05.mp4')
     ipcam = IpCamCapture(camera_url)
     ipcam.start()
     # 暂停1秒，确保影像已经填充队列
