@@ -10,7 +10,17 @@ max_lazy_frequency: 2
 target_img_storage_path: /mnt/
 
 # 应用系统地址
-application_system_url:
+application_system_ip_port:
+  - 192.168.1.1
+  - 2222
 
 # 大屏系统地址
 large_screen_system_url:
+
+# ftp地址
+ftp_ip_port_user_passwd_path:
+  - 192.168.10.200
+  - 21
+  - ders
+  - abc123
+  - /mnt/sdb/ftp/data
