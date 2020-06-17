@@ -61,6 +61,70 @@ class IpCamCapture:
         self.capture.release()
 
 
+class QnFtp:
+    def __init__(self):
+        self.ip = business_path_config['ftp_ip_port'][0]
+        self.port = business_path_config['ftp_ip_port'][1]
+        self.user = business_path_config['ftp_ip_port'][2]
+        self.passwd = business_path_config['ftp_ip_port'][3]
+        self.ftp_path = business_path_config['ftp_ip_port'][4]
+        self.bufsize = 4096
+        self.ftp = FTP()
+        self.ftp.set_debuglevel(2)
+
+    # 登录
+    def ftp_login(self):
+        try:
+            self.ftp.connect(self.ip, self.port)
+            self.ftp.login(self.user, self.passwd)
+        except:
+            print('FTP登录失败，请检查')
+            exit()  # 停止程序
+        else:
+            print('登录成功')
+
+    # 上传
+    def upload(self, detect_time, images):
+        try:
+            time_ymd = str(detect_time).split()[0]
+            self.judge_ftp_path(time_ymd)
+            self.ftp.storbinary('STOR %s' % os.path.basename(detect_time), images, self.bufsize)  # 上传文件
+        except:
+            print('上传ftp失败，请检查')
+            # exit()  # 停止程序
+        else:
+            print(str(detect_time) + ' 上传成功')
+
+    # 判断ftp路径是否存在
+    def judge_ftp_path(self, path):
+        try:
+            self.ftp.cwd(path)
+        except error_perm:
+            try:
+                self.ftp.mkd(path)
+            except error_perm:
+                meg = 'Change directory failed!: %s' % path
+                print(meg)
+
+    # 查询并删除指定天数前的数据
+    def clear_dir(self):
+        try:
+            self.ftp.cwd(self.ftp_path)
+        except:
+            self.ftp.mkd(self.ftp_path)
+        try:
+            files = self.ftp.nlst()
+            for file in files:
+                self.ftp.delete(file)
+        except:
+            print(str(self.ftp_path)+'目录为空或删除目录失败')
+
+    # 退出
+    def ftp_quit(self):
+        self.ftp.set_debuglevel(0)
+        self.ftp.quit()
+
+
 def parse_args():
     """Parse input arguments."""
     parser = argparse.ArgumentParser(description='disperse bird apply ')
@@ -82,28 +146,17 @@ def judge_ftp_path(ftp, path):
     return
 
 
-# 将检测到目前的图像存入ftp
+# 检测到目标的图像与ftp操作
 def detection_persistence(detect_time, images):
-    ftp = FTP()
+    qn_ftp = QnFtp()
     try:
-        ip = business_path_config['ftp_ip_port'][0]
-        port = business_path_config['ftp_ip_port'][1]
-        user = business_path_config['ftp_ip_port'][2]
-        passwd = business_path_config['ftp_ip_port'][3]
-        ftp_path = business_path_config['ftp_ip_port'][4]
-        ftp.set_debuglevel(2)
-        ftp.connect(ip, port)
-        ftp.login(user, passwd)
-        bufsize = 4096  # 设置的缓冲区大小
-        ftp.cwd(ftp_path + '/capture_picture')
-        path = str(detect_time).split()[0]
-        judge_ftp_path(ftp, path)
-        ftp.storbinary('STOR %s' % os.path.basename(detect_time), images, bufsize)  # 上传文件
-        ftp.set_debuglevel(0)
-    except Exception as e:
-        print('INFO:', e)
+        qn_ftp.ftp_login()
+        qn_ftp.clear_dir()  #？？？？？？？？？
+        qn_ftp.upload(detect_time, images)
+    except:
+        print()
     finally:
-        ftp.quit()
+        qn_ftp.ftp_quit()
 
 
 def socket_client_target_detection(detect_cls, detect_num, detect_img, detect_time, camera_number, disperse_sign):
@@ -248,11 +301,15 @@ if __name__ == '__main__':
     max_residence_frame = business_path_config['max_lazy_frequency']
     # 网络摄像头
     camera_url_list = business_path_config['camera_url']
+    ftp_images_save_time = business_path_config['ftp_images_save_time']
     mp.set_start_method(method='spawn')  # init
     queue = mp.Queue(maxsize=10)
     processes = list()
+    # 摄像头进程
     for camera_url in camera_url_list:
         processes.append(mp.Process(target=cam, args=(queue, camera_url)))
+    # 删除ftp中指定日期的数据的定时任务进程
+    processes.append()#////////////////////
     for process in processes:
         process.daemon = True
         process.start()
