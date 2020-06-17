@@ -24,3 +24,6 @@ ftp_ip_port_user_passwd_path:
   - ders
   - abc123
   - /mnt/sdb/ftp/data
+
+# ftp上图像保留时间(日)
+ftp_images_save_time: 30
