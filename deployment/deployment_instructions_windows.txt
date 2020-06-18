@@ -4,13 +4,14 @@ faster-rcnn-tf
 安装cuda9.0
 安装cudnn（与cuda版本对应）
 pip
-tensorflow-gpu == 1.9 (该版本对应cuda9.0,所以只能这个版本)
-opencv-python
-pillow
-cython
-easydict
-matplotlib
-scipy
+    pip install -i http://mirrors.aliyun.com/pypi/simple tensorflow-gpu==1.9 (该版本对应cuda9.0,所以只能这个版本)
+    pip install -i http://mirrors.aliyun.com/pypi/simple easydict
+    pip install -i http://mirrors.aliyun.com/pypi/simple cython
+    pip install -i http://mirrors.aliyun.com/pypi/simple opencv-python
+    pip install -i http://mirrors.aliyun.com/pypi/simple matplotlib
+    pip install -i http://mirrors.aliyun.com/pypi/simple pillow
+    pip install -i http://mirrors.aliyun.com/pypi/simple pyyaml
+    pip install -i http://mirrors.aliyun.com/pypi/simple apscheduler
 
 
 python3.5:

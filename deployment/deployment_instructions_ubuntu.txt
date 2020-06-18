@@ -72,6 +72,8 @@ ubuntu 1804 部署说明
         pip install -i http://mirrors.aliyun.com/pypi/simple opencv-python
         pip install -i http://mirrors.aliyun.com/pypi/simple matplotlib
         pip install -i http://mirrors.aliyun.com/pypi/simple pillow
+        pip install -i http://mirrors.aliyun.com/pypi/simple pyyaml
+        pip install -i http://mirrors.aliyun.com/pypi/simple apscheduler
 
 5.copy project
 
