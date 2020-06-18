@@ -20,6 +20,9 @@ import threading
 from business.utils import yaml_helper
 import multiprocessing as mp
 from ftplib import FTP, error_perm
+from apscheduler.schedulers.background import BackgroundScheduler
+from business.utils import path_helper as ph
+from business.utils import log_helper
 
 
 CLASSES = ('__background__',  'crow', 'magpie', 'pigeon', 'swallow', 'sparrow', 'airplane',  'person')
@@ -61,19 +64,18 @@ class IpCamCapture:
         self.capture.release()
 
 
+# ftp模块
 class QnFtp:
     def __init__(self):
-        self.ip = business_path_config['ftp_ip_port'][0]
-        self.port = business_path_config['ftp_ip_port'][1]
-        self.user = business_path_config['ftp_ip_port'][2]
-        self.passwd = business_path_config['ftp_ip_port'][3]
-        self.ftp_path = business_path_config['ftp_ip_port'][4]
+        self.ip = business_path_config['ftp_ip_port_user_passwd'][0]
+        self.port = business_path_config['ftp_ip_port_user_passwd'][1]
+        self.user = business_path_config['ftp_ip_port_user_passwd'][2]
+        self.passwd = business_path_config['ftp_ip_port_user_passwd'][3]
+        self.ftp_cap_video_path = business_path_config['ftp_data_path']
         self.bufsize = 4096
         self.ftp = FTP()
         self.ftp.set_debuglevel(2)
-
-    # 登录
-    def ftp_login(self):
+        # 登录
         try:
             self.ftp.connect(self.ip, self.port)
             self.ftp.login(self.user, self.passwd)
@@ -106,18 +108,21 @@ class QnFtp:
                 meg = 'Change directory failed!: %s' % path
                 print(meg)
 
-    # 查询并删除指定天数前的数据
-    def clear_dir(self):
+    # 查询并删除指定天数前的视频捕捉图像
+    def clear_cap_img_dir(self):
         try:
-            self.ftp.cwd(self.ftp_path)
+            self.ftp.cwd(self.ftp_cap_video_path)
         except:
-            self.ftp.mkd(self.ftp_path)
+            self.ftp.mkd(self.ftp_cap_video_path)
         try:
             files = self.ftp.nlst()
             for file in files:
+                # 满足条件则删除
+                if 1: # ？？？？？？？？？？？？？？？？？？？？
+                    pass
                 self.ftp.delete(file)
         except:
-            print(str(self.ftp_path)+'目录为空或删除目录失败')
+            print(str(self.ftp_cap_video_path)+'目录为空或删除目录失败')
 
     # 退出
     def ftp_quit(self):
@@ -125,6 +130,7 @@ class QnFtp:
         self.ftp.quit()
 
 
+# 系统参数解析
 def parse_args():
     """Parse input arguments."""
     parser = argparse.ArgumentParser(description='disperse bird apply ')
@@ -150,8 +156,6 @@ def judge_ftp_path(ftp, path):
 def detection_persistence(detect_time, images):
     qn_ftp = QnFtp()
     try:
-        qn_ftp.ftp_login()
-        qn_ftp.clear_dir()  #？？？？？？？？？
         qn_ftp.upload(detect_time, images)
     except:
         print()
@@ -159,6 +163,7 @@ def detection_persistence(detect_time, images):
         qn_ftp.ftp_quit()
 
 
+# 发送消息到应用系统
 def socket_client_target_detection(detect_cls, detect_num, detect_img, detect_time, camera_number, disperse_sign):
     # create socket
     tcp_client_socket = socket(AF_INET, SOCK_STREAM)
@@ -206,6 +211,7 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
     return im
 
 
+# 摄像头视频检测
 def demo_video(sess, net, frame, camera_url, max_residence_frame):
     """Detect object classes in an image usi， ng pre-computed object proposals."""
     global residence_frame
@@ -248,6 +254,7 @@ def demo_video(sess, net, frame, camera_url, max_residence_frame):
             socket_client_target_detection(cls, len(inds), images, time.ctime(), camera_url, False)
 
 
+# 相机触发函数
 def cam(queue, camera_url):
     demonet = 'vgg16'
     tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_200000.ckpt'
@@ -292,16 +299,38 @@ def cam(queue, camera_url):
     cv2.destroyAllWindows()
 
 
+# 清空指定日期前的ftp上的捕获图像和本地的日志
+def clear_folds():
+    qn_ftp = QnFtp()
+    qn_ftp.clear_cap_img_dir()
+    qn_ftp.ftp_quit()
+
+    # ？？？？？？？？？？？？？？？、、、、、、
+
+
+# 每天零点检查ftp生成数据是否超过指定周期数
+def check_ftp_fold():
+    try:
+        scheduler = BackgroundScheduler()
+        scheduler.add_job(func=clear_folds(), trigger='cron', month='*', day='*', hour=0, minute='0')
+        scheduler.start()
+    except BaseException as e:
+        log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                           + str(e))
+
+
 if __name__ == '__main__':
     args = parse_args()
     # gpu_num = args.gpu_num
-    project_address = os.path.abspath(os.path.dirname(os.path.dirname(__file__))) + '/EvictionBirdAI'
+    project_address = ph.get_local_project_path(os.path.dirname(os.path.abspath(__file__)), 0)
     business_path_config = yaml_helper.get_data_from_yaml(project_address + '/business/config/business_config.yaml')
     # 触发报警的最大"连续"识别次数
     max_residence_frame = business_path_config['max_lazy_frequency']
     # 网络摄像头
     camera_url_list = business_path_config['camera_url']
     ftp_images_save_time = business_path_config['ftp_images_save_time']
+    local_business_logs_path = business_path_config['local_business_logs_path']
     mp.set_start_method(method='spawn')  # init
     queue = mp.Queue(maxsize=10)
     processes = list()
@@ -309,7 +338,7 @@ if __name__ == '__main__':
     for camera_url in camera_url_list:
         processes.append(mp.Process(target=cam, args=(queue, camera_url)))
     # 删除ftp中指定日期的数据的定时任务进程
-    processes.append()#////////////////////
+    processes.append(mp.Process(target=check_ftp_fold))
     for process in processes:
         process.daemon = True
         process.start()

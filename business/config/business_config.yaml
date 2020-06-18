@@ -18,12 +18,17 @@ application_system_ip_port:
 large_screen_system_url:
 
 # ftp地址
-ftp_ip_port_user_passwd_path:
+ftp_ip_port_user_passwd:
   - 192.168.10.200
   - 21
   - ders
   - abc123
-  - /mnt/sdb/ftp/data
+
+# 捕获视频路径
+ftp_data_path: /mnt/sdb/ftp/data/capture
+
+# 日志路径
+local_business_logs_path: /mnt/sdb/qn_business_logs
 
 # ftp上图像保留时间(日)
 ftp_images_save_time: 30
