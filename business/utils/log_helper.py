@@ -4,12 +4,14 @@ import os
 
 
 def log_out(log_level, local_business_logs_path, log_content):
-    rq = time.strftime(u'%Y%m%d', time.localtime(time.time()))
     if not os.path.exists(local_business_logs_path):
         os.makedirs(local_business_logs_path)
+    rq_ymd = time.strftime(u'%Y-%m-%d', time.localtime(time.time()))
+    rq_ym = time.strftime(u'%Y-%m', time.localtime(time.time()))
+    if not os.path.exists(local_business_logs_path + '/' + rq_ym):
+        os.makedirs(local_business_logs_path + '/' + rq_ym)
     log_path = local_business_logs_path
-    log_name = log_path + '/' + rq + u'.logs'
-
+    log_name = log_path + '/' + rq_ym + '/' + rq_ymd + u'.logs'
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
     fh = logging.FileHandler(log_name, mode=u'a')

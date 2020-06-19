@@ -6,6 +6,12 @@ camera_url:
 # 触发报警的最大"连续"识别次数
 max_lazy_frequency: 2
 
+# 检测目标阈值(精度)
+detect_threshold: 0.7
+
+# 非极大值抑制（搜索框重贴）值越小重叠度越高
+nms_threshold: 0.1
+
 # 识别图像存储路径
 target_img_storage_path: /mnt/
 
@@ -30,5 +36,8 @@ ftp_data_path: /mnt/sdb/ftp/data/capture
 # 日志路径
 local_business_logs_path: /mnt/sdb/qn_business_logs
 
+# 日志保留时间(月)
+local_business_logs_retain_time: 12
+
 # ftp上图像保留时间(日)
-ftp_images_save_time: 30
+ftp_images_retain_time: 30

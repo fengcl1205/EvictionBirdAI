@@ -5,6 +5,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import shutil
 import cv2
 import numpy as np
 import tensorflow as tf
@@ -39,29 +40,39 @@ class IpCamCapture:
         self.isstop = False
         self.capture = cv2.VideoCapture(self.url)
 
-    def start(self):
-        print('ipcam started!')
+    def start_t(self, camera_url):
+        log_helper.log_out('info', local_business_logs_path,
+                           camera_url + ' 摄像头打卡')
         # 把程序放进子线程，daemon=True 表示该线程会随着主线程关闭而关闭。
         threading.Thread(target=self.query_frame, daemon=True, args=()).start()
 
     # 停止无限循环的开关
-    def stop(self):
+    def stop(self, camera_url):
         self.isstop = True
-        print('ipcam stopped!')
+        log_helper.log_out('info', local_business_logs_path,
+                           camera_url + ' 摄像头关闭')
 
     # 当有需要影像时，再回传最新的影像。
     def get_frame(self):
         return self.Frame
 
     def query_frame(self):
-        while not self.isstop:
-            self.status, self.Frame = self.capture.read()
-            # 摄像头传来数据由于转义等未知原因无法读取时，重新调用摄像头
-            if not self.status:
-                print('视频流发现问题，矫正中...')
-                self.capture = cv2.VideoCapture(self.url)
+        try:
+            while not self.isstop:
                 self.status, self.Frame = self.capture.read()
-        self.capture.release()
+                # 摄像头传来数据由于转义等未知原因无法读取时，重新调用摄像头
+                if not self.status:
+                    log_helper.log_out('info', local_business_logs_path,
+                                       '视频流发现问题，矫正中...')
+                    self.capture = cv2.VideoCapture(self.url)
+                    self.status, self.Frame = self.capture.read()
+            self.capture.release()
+        except BaseException as e:
+            log_helper.log_out('error', local_business_logs_path,
+                           'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                           + str(e))
+            raise
 
 
 # ftp模块
@@ -79,11 +90,15 @@ class QnFtp:
         try:
             self.ftp.connect(self.ip, self.port)
             self.ftp.login(self.user, self.passwd)
-        except:
-            print('FTP登录失败，请检查')
+        except BaseException as e:
+            log_helper.log_out('error', local_business_logs_path,
+                               'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                               + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                               + str(e))
             exit()  # 停止程序
+            raise
         else:
-            print('登录成功')
+            log_helper.log_out('info', local_business_logs_path, ' ftp登录成功')
 
     # 上传
     def upload(self, detect_time, images):
@@ -91,11 +106,16 @@ class QnFtp:
             time_ymd = str(detect_time).split()[0]
             self.judge_ftp_path(time_ymd)
             self.ftp.storbinary('STOR %s' % os.path.basename(detect_time), images, self.bufsize)  # 上传文件
-        except:
-            print('上传ftp失败，请检查')
+        except BaseException as e:
+            log_helper.log_out('error', local_business_logs_path,
+                           'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                           + str(e))
             # exit()  # 停止程序
+            raise
         else:
-            print(str(detect_time) + ' 上传成功')
+            log_helper.log_out('info', local_business_logs_path,
+                               str(detect_time) + ' 上传成功')
 
     # 判断ftp路径是否存在
     def judge_ftp_path(self, path):
@@ -104,30 +124,56 @@ class QnFtp:
         except error_perm:
             try:
                 self.ftp.mkd(path)
-            except error_perm:
-                meg = 'Change directory failed!: %s' % path
-                print(meg)
+            except BaseException as e:
+                log_helper.log_out('error', local_business_logs_path,
+                           'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                           + str(e))
+                raise
 
     # 查询并删除指定天数前的视频捕捉图像
-    def clear_cap_img_dir(self):
+    def clear_cap_img_dir(self, current_time_y, current_time_m, current_time_d):
         try:
             self.ftp.cwd(self.ftp_cap_video_path)
         except:
             self.ftp.mkd(self.ftp_cap_video_path)
         try:
             files = self.ftp.nlst()
-            for file in files:
-                # 满足条件则删除
-                if 1: # ？？？？？？？？？？？？？？？？？？？？
-                    pass
-                self.ftp.delete(file)
-        except:
-            print(str(self.ftp_cap_video_path)+'目录为空或删除目录失败')
+            for file in files:  # 例2020-06-12
+                # 满足条件则删除目录
+                if datetime.datetime(current_time_y, current_time_m, current_time_d) - \
+                        datetime.datetime(int(file.split('-')[0]), int(file.split('-')[1]), int(file.split('-')[2])) \
+                        > ftp_images_retain_time:
+                    self.ftp.delete(file)
+        except BaseException as e:
+            log_helper.log_out('error', local_business_logs_path,
+                               'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                               + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                               + str(e))
+            raise
 
     # 退出
     def ftp_quit(self):
         self.ftp.set_debuglevel(0)
         self.ftp.quit()
+
+
+# 清空本地指定日期范围外的日志文件
+def clear_local_business_logs(current_time_y, current_time_m, current_time_d):
+    try:
+        files = os.listdir(local_business_logs_path)
+        for file in files:  # 例2020-06-12
+            file_path = os.path.join(local_business_logs_path, file)
+            if os.path.isdir(file_path):  # 日志是按月为单位目录存储的
+                if (current_time_y - int(file.split('-')[0])) * 12 + (current_time_m - int(file.split('-')[1]))\
+                        > ftp_images_retain_time:
+                    shutil.rmtree(os.path.join(local_business_logs_path, file))
+    except BaseException as e:
+        log_helper.log_out('error', local_business_logs_path,
+                       'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                       + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                       + str(e))
+        raise
 
 
 # 系统参数解析
@@ -146,9 +192,12 @@ def judge_ftp_path(ftp, path):
     except error_perm:
         try:
             ftp.mkd(path)
-        except error_perm:
-            meg = 'Change directory failed!: %s' % path
-            print(meg)
+        except BaseException as e:
+            log_helper.log_out('error', local_business_logs_path,
+                               'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                               + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                               + str(e))
+            raise
     return
 
 
@@ -157,8 +206,11 @@ def detection_persistence(detect_time, images):
     qn_ftp = QnFtp()
     try:
         qn_ftp.upload(detect_time, images)
-    except:
-        print()
+    except BaseException as e:
+         log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                           + str(e))
+         raise
     finally:
         qn_ftp.ftp_quit()
 
@@ -167,18 +219,25 @@ def detection_persistence(detect_time, images):
 def socket_client_target_detection(detect_cls, detect_num, detect_img, detect_time, camera_number, disperse_sign):
     # create socket
     tcp_client_socket = socket(AF_INET, SOCK_STREAM)
-    # target info
-    server_ip = business_path_config['application_system_ip_port'][0]
-    server_port = int(business_path_config['application_system_ip_port'][1])
-    # connet servier
-    tcp_client_socket.connect((server_ip, server_port))
-    # send info
-    send_data = {'detectContent': detect_cls, 'detectTime': detect_time, 'cameraNumber': camera_number}
-    tcp_client_socket.send(bytes(str(send_data), encoding='gbk'))
-    # Return data
-    recvData = tcp_client_socket.recv(1024)
-    # close
-    tcp_client_socket.close()
+    try:
+        # target info
+        server_ip = business_path_config['application_system_ip_port'][0]
+        server_port = int(business_path_config['application_system_ip_port'][1])
+        # connet servier
+        tcp_client_socket.connect((server_ip, server_port))
+        # send info
+        send_data = {'detectContent': detect_cls, 'detectTime': detect_time, 'cameraNumber': camera_number}
+        tcp_client_socket.send(bytes(str(send_data), encoding='gbk'))
+        # Return data
+        recvData = tcp_client_socket.recv(1024)
+    except BaseException as e:
+        log_helper.log_out('error', local_business_logs_path,
+                       'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                       + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                       + str(e))
+        raise
+    finally:
+        tcp_client_socket.close()
 
 
 # video detection drawing
@@ -223,8 +282,8 @@ def demo_video(sess, net, frame, camera_url, max_residence_frame):
     # 标识是否发送报警通讯
     warning_flag = False
     # Visualize detections for each class
-    CONF_THRESH = 0.78  # threshold
-    NMS_THRESH = 0.1
+    CONF_THRESH = detect_threshold  # threshold
+    NMS_THRESH = nms_threshold
     for cls_ind, cls in enumerate(CLASSES[1:]):
         cls_ind += 1  # because we skipped background
         cls_boxes = boxes[:, 4 * cls_ind:4 * (cls_ind + 1)]
@@ -259,7 +318,8 @@ def cam(queue, camera_url):
     demonet = 'vgg16'
     tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_200000.ckpt'
     if not os.path.isfile(tfmodel + '.meta'):
-        print(tfmodel)
+        log_helper.log_out('info', local_business_logs_path,
+                           tfmodel)
         raise IOError(('{:s} not found.\nDid you download the proper networks from '
                        'our server and place them properly?').format(tfmodel + '.meta'))
     # set config
@@ -280,44 +340,51 @@ def cam(queue, camera_url):
                             tag='default', anchor_scales=[8, 16, 32, 64])
     saver = tf.train.Saver()
     saver.restore(sess, tfmodel)
-    print('Loaded network {:s}'.format(tfmodel))
+    # print('Loaded network {:s}'.format(tfmodel))
+    log_helper.log_out('info', local_business_logs_path,
+                       'Loaded network {:s}'.format(tfmodel))
     timer_trigger = Timer()
     timer_trigger.tic()
     ipcam = IpCamCapture(camera_url)
-    ipcam.start()
+    ipcam.start_t(camera_url)
     # 暂停1秒，确保影像已经填充队列
     time.sleep(1)
-    print(str(time.time()) + ' Monitoring ...')
+    # print(str(time.time()) + ' Monitoring ...')
+    log_helper.log_out('info', local_business_logs_path,
+                       str(time.time()) + ' Monitoring ...')
     while True:
         frame = ipcam.get_frame()
         demo_video(sess, net, frame, camera_url, max_residence_frame)
         key = cv2.waitKey(1)
         if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
-            ipcam.stop()
+            ipcam.stop(camera_url)
             break
-    print(str(time.time()) + ' 识别系统已关闭')
+    # print(str(time.time()) + ' 识别系统已关闭')
+    log_helper.log_out('info', local_business_logs_path,
+                       str(time.time()) + ' 识别系统已关闭')
     cv2.destroyAllWindows()
 
 
 # 清空指定日期前的ftp上的捕获图像和本地的日志
 def clear_folds():
     qn_ftp = QnFtp()
-    qn_ftp.clear_cap_img_dir()
-    qn_ftp.ftp_quit()
-
-    # ？？？？？？？？？？？？？？？、、、、、、
-
-
-# 每天零点检查ftp生成数据是否超过指定周期数
-def check_ftp_fold():
     try:
+        current_time_y = datetime.datetime.now().strftime('%Y')
+        current_time_m = datetime.datetime.now().strftime('%m')
+        current_time_d = datetime.datetime.now().strftime('%d')
         scheduler = BackgroundScheduler()
-        scheduler.add_job(func=clear_folds(), trigger='cron', month='*', day='*', hour=0, minute='0')
+        scheduler.add_job(func=qn_ftp.clear_cap_img_dir, args=(current_time_y, current_time_m, current_time_d),
+                          trigger='cron', month='*', day='*', hour=0, minute='0')
+        scheduler.add_job(func=clear_local_business_logs, args=(current_time_y, current_time_m, current_time_d),
+                          trigger='cron', month='*', day='1', hour=0, minute='0')
         scheduler.start()
     except BaseException as e:
         log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                            + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
                            + str(e))
+        raise
+    finally:
+        qn_ftp.ftp_quit()
 
 
 if __name__ == '__main__':
@@ -329,18 +396,26 @@ if __name__ == '__main__':
     max_residence_frame = business_path_config['max_lazy_frequency']
     # 网络摄像头
     camera_url_list = business_path_config['camera_url']
-    ftp_images_save_time = business_path_config['ftp_images_save_time']
+    ftp_images_retain_time = business_path_config['ftp_images_retain_time']
     local_business_logs_path = business_path_config['local_business_logs_path']
-    mp.set_start_method(method='spawn')  # init
-    queue = mp.Queue(maxsize=10)
-    processes = list()
-    # 摄像头进程
-    for camera_url in camera_url_list:
-        processes.append(mp.Process(target=cam, args=(queue, camera_url)))
-    # 删除ftp中指定日期的数据的定时任务进程
-    processes.append(mp.Process(target=check_ftp_fold))
-    for process in processes:
-        process.daemon = True
-        process.start()
-    for process in processes:
-        process.join()
+    local_business_logs_retain_time = business_path_config['local_business_logs_retain_time']
+    detect_threshold = business_path_config['detect_threshold']
+    nms_threshold = business_path_config['business_path_config']
+    try:
+        # 定期清理ftp上的检测图像和日志文件
+        clear_folds()
+        mp.set_start_method(method='spawn')  # init
+        queue = mp.Queue(maxsize=10)
+        processes = list()
+        # 摄像头进程
+        for camera_url in camera_url_list:
+            processes.append(mp.Process(target=cam, args=(queue, camera_url)))
+        for process in processes:
+            process.daemon = True
+            process.start()
+        for process in processes:
+            process.join()
+    except BaseException as e:
+        log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                           + str(e))

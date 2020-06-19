@@ -20,6 +20,7 @@ from socket import *
 import threading
 from business.utils import yaml_helper
 import multiprocessing as mp
+from business.utils import path_helper as ph
 
 
 CLASSES = ('__background__',  # always index 0
@@ -261,7 +262,7 @@ def cam(queue, camera_url):
 
 if __name__ == '__main__':
     args = parse_args()
-    project_address = os.path.abspath(os.path.dirname(os.path.dirname(__file__))) + '/EvictionBirdAI'
+    project_address = ph.get_local_project_path(os.path.dirname(os.path.abspath(__file__)), 0)
     business_path_config = yaml_helper.get_data_from_yaml(project_address + '/business/config/business_config.yaml')
     # 触发报警的最大"连续"识别次数
     max_residence_frame = business_path_config['max_lazy_frequency']
