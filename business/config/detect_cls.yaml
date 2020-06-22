@@ -1,0 +1,35 @@
+# 全部类别
+all_detect_categories:
+  - __background__  # 保留
+  - aeroplane
+  - bicycle
+  - boat
+  - bottle
+  - bus
+  - car
+  - cat
+  - chair
+  - cow
+  - diningtable
+  - dog
+  - horse
+  - motorbike
+  - person
+  - pottedplant
+  - sheep
+  - sofa
+  - train
+  - tvmonitor
+  - crow
+  - magpie
+  - pigeon
+  - swallow
+  - sparrow
+
+#检测类别
+target_detect_categories:
+  - crow
+  - magpie
+  - pigeon
+  - swallow
+  - sparrow
