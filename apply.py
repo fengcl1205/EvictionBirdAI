@@ -26,7 +26,24 @@ from business.utils import path_helper as ph
 from business.utils import log_helper
 
 
-CLASSES = ('__background__',  'crow', 'magpie', 'pigeon', 'swallow', 'sparrow', 'airplane',  'person')
+project_address = ph.get_local_project_path(os.path.dirname(os.path.abspath(__file__)), 0)
+business_path_config = yaml_helper.get_data_from_yaml(project_address + '/business/config/business_config.yaml')
+detect_categories_config = yaml_helper.get_data_from_yaml(project_address + '/business/config/detect_cls.yaml')
+# 触发报警的最大"连续"识别次数
+max_residence_frame = business_path_config['max_lazy_frequency']
+# 网络摄像头
+camera_url_list = business_path_config['camera_url']
+ftp_images_retain_time = business_path_config['ftp_images_retain_time']
+local_business_logs_path = business_path_config['local_business_logs_path']
+local_business_logs_retain_time = business_path_config['local_business_logs_retain_time']
+detect_threshold = business_path_config['detect_threshold']
+nms_threshold = business_path_config['nms_threshold']
+local_cap_video_path = business_path_config['local_cap_video_path']
+all_detect_categories = detect_categories_config['all_detect_categories']
+target_detect_categories = detect_categories_config['target_detect_categories']
+CLASSES = tuple(all_detect_categories)
+TARGET_CLASSES = tuple(target_detect_categories)
+# CLASSES = ('__background__',  'crow', 'magpie', 'pigeon', 'swallow', 'sparrow', 'airplane',  'person')
 # 当前触发报警的"连续"识别次数
 residence_frame = 0
 
@@ -82,7 +99,7 @@ class QnFtp:
         self.port = business_path_config['ftp_ip_port_user_passwd'][1]
         self.user = business_path_config['ftp_ip_port_user_passwd'][2]
         self.passwd = business_path_config['ftp_ip_port_user_passwd'][3]
-        self.ftp_cap_video_path = business_path_config['ftp_data_path']
+        self.ftp_cap_video_path = business_path_config['ftp_cap_video_path']
         self.bufsize = 4096
         self.ftp = FTP()
         self.ftp.set_debuglevel(2)
@@ -90,6 +107,7 @@ class QnFtp:
         try:
             self.ftp.connect(self.ip, self.port)
             self.ftp.login(self.user, self.passwd)
+            log_helper.log_out('info', local_business_logs_path, ' ftp登录成功')
         except BaseException as e:
             log_helper.log_out('error', local_business_logs_path,
                                'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
@@ -97,13 +115,11 @@ class QnFtp:
                                + str(e))
             exit()  # 停止程序
             raise
-        else:
-            log_helper.log_out('info', local_business_logs_path, ' ftp登录成功')
 
     # 上传
     def upload(self, detect_time, images):
         try:
-            time_ymd = str(detect_time).split()[0]
+            time_ymd = str(detect_time).split()[0]  # 以日为单位存储
             self.judge_ftp_path(time_ymd)
             self.ftp.storbinary('STOR %s' % os.path.basename(detect_time), images, self.bufsize)  # 上传文件
         except BaseException as e:
@@ -113,9 +129,9 @@ class QnFtp:
                            + str(e))
             # exit()  # 停止程序
             raise
-        else:
-            log_helper.log_out('info', local_business_logs_path,
-                               str(detect_time) + ' 上传成功')
+
+        log_helper.log_out('info', local_business_logs_path,
+                           str(detect_time) + ' 上传成功')
 
     # 判断ftp路径是否存在
     def judge_ftp_path(self, path):
@@ -158,51 +174,9 @@ class QnFtp:
         self.ftp.quit()
 
 
-# 清空本地指定日期范围外的日志文件
-def clear_local_business_logs(current_time_y, current_time_m, current_time_d):
-    try:
-        files = os.listdir(local_business_logs_path)
-        for file in files:  # 例2020-06-12
-            file_path = os.path.join(local_business_logs_path, file)
-            if os.path.isdir(file_path):  # 日志是按月为单位目录存储的
-                if (current_time_y - int(file.split('-')[0])) * 12 + (current_time_m - int(file.split('-')[1]))\
-                        > ftp_images_retain_time:
-                    shutil.rmtree(os.path.join(local_business_logs_path, file))
-    except BaseException as e:
-        log_helper.log_out('error', local_business_logs_path,
-                       'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                       + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                       + str(e))
-        raise
-
-
-# 系统参数解析
-def parse_args():
-    """Parse input arguments."""
-    parser = argparse.ArgumentParser(description='disperse bird apply ')
-    parser.add_argument('--gpu_num', dest='gpu_num', help='please input gpu number')
-    args = parser.parse_args()
-    return args
-
-
-# 判断ftp路径是否存在
-def judge_ftp_path(ftp, path):
-    try:
-        ftp.cwd(path)
-    except error_perm:
-        try:
-            ftp.mkd(path)
-        except BaseException as e:
-            log_helper.log_out('error', local_business_logs_path,
-                               'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                               + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                               + str(e))
-            raise
-    return
-
-
-# 检测到目标的图像与ftp操作
+# 检测到目标的图像并且持久化
 def detection_persistence(detect_time, images):
+    '''
     qn_ftp = QnFtp()
     try:
         qn_ftp.upload(detect_time, images)
@@ -213,6 +187,63 @@ def detection_persistence(detect_time, images):
          raise
     finally:
         qn_ftp.ftp_quit()
+    '''
+    try:
+        path = local_cap_video_path + '/' + detect_time.split()[0]
+        if not os.path.exists(path):
+            os.makedirs(path)
+        cv2.imwrite(path + '/' + detect_time + '.jpg', images)
+    except BaseException as e:
+        log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                           + str(e))
+        raise
+
+
+# 清空本地指定日期范围外的日志文件
+def clear_local_business_logs(current_time_y, current_time_m, current_time_d):
+    try:
+        files = os.listdir(local_cap_video_path)
+        for file in files:  # 例2020-06-12
+            file_path = os.path.join(local_cap_video_path, file)
+            if os.path.isdir(file_path):  # 日志是按月为单位目录存储的
+                if (current_time_y - int(file.split('-')[0])) * 12 + (current_time_m - int(file.split('-')[1]))\
+                        > ftp_images_retain_time:
+                    shutil.rmtree(os.path.join(local_cap_video_path, file))
+    except BaseException as e:
+        log_helper.log_out('error', local_cap_video_path,
+                       'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                       + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                       + str(e))
+        raise
+
+
+# 清空本地指定日期范围外的捕获图像
+def clear_local_capture_images(current_time_y, current_time_m, current_time_d):
+    try:
+        files = os.listdir(local_cap_video_path)
+        for file in files:  # 例2020-06-12
+            file_path = os.path.join(local_cap_video_path, file)
+            if os.path.isdir(file_path):  # 日志是按月为单位目录存储的
+                if (datetime.date(int(current_time_y), int(current_time_m), int(current_time_d)) -
+                    datetime.date(int(file.split('-')[0]), int(file.split('-')[1]), int(file.split('-')[2]))).days \
+                        > ftp_images_retain_time:
+                    shutil.rmtree(os.path.join(local_cap_video_path, file))
+    except BaseException as e:
+        log_helper.log_out('error', local_business_logs_path,
+                           'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                           + str(e))
+        raise
+
+
+# 系统参数解析
+def parse_args():
+    """Parse input arguments."""
+    parser = argparse.ArgumentParser(description='disperse bird apply ')
+    parser.add_argument('--gpu_num', dest='gpu_num', help='please input gpu number')
+    args = parser.parse_args()
+    return args
 
 
 # 发送消息到应用系统
@@ -253,11 +284,9 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
         end_time = time.time()
         # current_time = time.ctime()  # current time
         fps = round(1/(end_time - start_time), 2)
-        if class_name == 'sparrow' or class_name == 'crow' or class_name == 'magpie' or class_name == 'pigeon' or class_name == 'swallow':
+        if class_name in target_detect_categories:
             cv2.rectangle(im, (x1, y1), (x2, y2), (0, 0, 255), 2)
-        elif class_name == 'airplane':
-            cv2.rectangle(im, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        elif class_name == 'person':
+        else:
             cv2.rectangle(im, (x1, y1), (x2, y2), (255, 0, 0), 2)
         '''
         cv2.putText(im, str(round(score, 2)), (int(x1), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)  # score
@@ -293,12 +322,11 @@ def demo_video(sess, net, frame, camera_url, max_residence_frame):
         keep = nms(dets, NMS_THRESH)
         dets = dets[keep, :]
         inds = np.where(dets[:, -1] >= CONF_THRESH)[0]
-        if cls == 'crow' or cls == 'magpie' or cls == 'pigeon' or cls == 'swallow' \
-                or cls == 'sparrow' and len(inds) != 0:
+        if cls in target_detect_categories and len(inds) != 0:
             residence_frame += 1
             if residence_frame == max_residence_frame:
                 images = vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)
-                detect_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
+                detect_time = datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S.%f')
                 socket_client_target_detection(cls, len(inds), images, detect_time, camera_url, True)
                 # 多线程写入磁盘
                 t_persistence = threading.Thread(target=detection_persistence, daemon=True, args=(detect_time, images)).start()
@@ -316,7 +344,7 @@ def demo_video(sess, net, frame, camera_url, max_residence_frame):
 # 相机触发函数
 def cam(queue, camera_url):
     demonet = 'vgg16'
-    tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_200000.ckpt'
+    tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_300000.ckpt'
     if not os.path.isfile(tfmodel + '.meta'):
         log_helper.log_out('info', local_business_logs_path,
                            tfmodel)
@@ -373,10 +401,10 @@ def clear_folds():
         current_time_m = datetime.datetime.now().strftime('%m')
         current_time_d = datetime.datetime.now().strftime('%d')
         scheduler = BackgroundScheduler()
-        scheduler.add_job(func=qn_ftp.clear_cap_img_dir, args=(current_time_y, current_time_m, current_time_d),
-                          trigger='cron', month='*', day='*', hour=0, minute='0')
         scheduler.add_job(func=clear_local_business_logs, args=(current_time_y, current_time_m, current_time_d),
-                          trigger='cron', month='*', day='1', hour=0, minute='0')
+                          trigger='cron', month='*', day='*', hour='0', minute='0')
+        scheduler.add_job(func=clear_local_business_logs, args=(current_time_y, current_time_m, current_time_d),
+                          trigger='cron', month='*', day='1', hour='0', minute='0')
         scheduler.start()
     except BaseException as e:
         log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
@@ -390,17 +418,7 @@ def clear_folds():
 if __name__ == '__main__':
     args = parse_args()
     # gpu_num = args.gpu_num
-    project_address = ph.get_local_project_path(os.path.dirname(os.path.abspath(__file__)), 0)
-    business_path_config = yaml_helper.get_data_from_yaml(project_address + '/business/config/business_config.yaml')
-    # 触发报警的最大"连续"识别次数
-    max_residence_frame = business_path_config['max_lazy_frequency']
-    # 网络摄像头
-    camera_url_list = business_path_config['camera_url']
-    ftp_images_retain_time = business_path_config['ftp_images_retain_time']
-    local_business_logs_path = business_path_config['local_business_logs_path']
-    local_business_logs_retain_time = business_path_config['local_business_logs_retain_time']
-    detect_threshold = business_path_config['detect_threshold']
-    nms_threshold = business_path_config['business_path_config']
+
     try:
         # 定期清理ftp上的检测图像和日志文件
         clear_folds()
