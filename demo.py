@@ -23,14 +23,35 @@ import multiprocessing as mp
 from business.utils import path_helper as ph
 
 
-CLASSES = ('__background__',  # always index 0
-                          'crow', 'magpie', 'pigeon', 'swallow', 'sparrow', 'airplane',  'person')
+# CLASSES = ('__background__',  # always index 0
+#                           'crow', 'magpie', 'pigeon', 'swallow', 'sparrow', 'airplane',  'person')
 # CLASSES = ('__background__',  # always index 0
 #                          'airplane', 'bird', 'person')
 
-NETS = {'vgg16': ('vgg16_faster_rcnn_iter_70000.ckpt',), 'res101': ('vgg16_faster_rcnn_iter_99990.ckpt',)}
-DATASETS = {'pascal_voc': ('voc_2007_trainvWrote snapshot to: D:\pyworkspace\Faster-RCNN-TensorFlow-Python3-master\default\voc_2007_trainval\default_bird\vgg16_faster_rcnn_iter_1400.ckptal',), 'pascal_voc_0712': ('voc_2007_trainval+voc_2012_trainval',)}
+project_address = ph.get_local_project_path(os.path.dirname(os.path.abspath(__file__)), 0)
+business_path_config = yaml_helper.get_data_from_yaml(project_address + '/business/config/business_config.yaml')
+detect_categories_config = yaml_helper.get_data_from_yaml(project_address + '/business/config/detect_cls.yaml')
+# 触发报警的最大"连续"识别次数
+max_residence_frame = business_path_config['max_lazy_frequency']
+# 网络摄像头
+camera_url_list = business_path_config['camera_url']
+ftp_images_retain_time = business_path_config['ftp_images_retain_time']
+local_business_logs_path = business_path_config['local_business_logs_path']
+local_business_logs_retain_time = business_path_config['local_business_logs_retain_time']
+detect_threshold = business_path_config['detect_threshold']
+nms_threshold = business_path_config['nms_threshold']
+local_cap_video_path = business_path_config['local_cap_video_path']
+all_detect_categories = detect_categories_config['all_detect_categories']
+target_detect_categories = detect_categories_config['target_detect_categories']
+CLASSES = tuple(all_detect_categories)
+TARGET_CLASSES = tuple(target_detect_categories)
 
+# CLASSES = ('__background__',
+#                  'aeroplane', 'bicycle', 'boat',
+#                  'bottle', 'bus', 'car', 'cat', 'chair',
+#                  'cow', 'diningtable', 'dog', 'horse',
+#                  'motorbike', 'person', 'pottedplant',
+#                  'sheep', 'sofa', 'train', 'tvmonitor', 'crow', 'magpie', 'pigeon', 'swallow', 'sparrow')
 
 # 接收摄影机串流影像，采用多线程的方式，降低缓冲区栈图帧的问题。
 class IpCamCapture:
@@ -159,11 +180,9 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
             end_time = time.time()
             current_time = time.ctime()  # current time
             fps = round(1/(end_time - start_time), 2)
-            if class_name == 'sparrow' or class_name == 'crow' or class_name == 'magpie' or class_name == 'pigeon' or class_name == 'swallow':
+            if class_name in TARGET_CLASSES:
                 cv2.rectangle(im, (x1, y1), (x2, y2), (0, 0, 255), 2)
-            elif class_name == 'airplane':
-                cv2.rectangle(im, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            elif class_name == 'person':
+            else:
                 cv2.rectangle(im, (x1, y1), (x2, y2), (255, 0, 0), 2)
 
             cv2.putText(im, str(round(score, 2)), (int(x1), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)  # score
@@ -184,8 +203,8 @@ def demo_video(sess, net, frame, camera_url, max_residence_frame):
     timer.toc()
     # print('Detection took {:.3f}s for {:d} object proposals'.format(timer.total_time, boxes.shape[0]))
     # Visualize detections for each class
-    CONF_THRESH = 0.7  # threshold
-    NMS_THRESH = 0.1
+    CONF_THRESH = detect_threshold  # threshold
+    NMS_THRESH = nms_threshold
     for cls_ind, cls in enumerate(CLASSES[1:]):
         cls_ind += 1  # because we skipped background
         cls_boxes = boxes[:, 4 * cls_ind:4 * (cls_ind + 1)]
@@ -199,15 +218,12 @@ def demo_video(sess, net, frame, camera_url, max_residence_frame):
         # socket_client_target_detection(cls, timer.start_time, cameraNumber, images, targetNum)
 
 
+# 系统参数解析
 def parse_args():
     """Parse input arguments."""
-    parser = argparse.ArgumentParser(description='Tensorflow Faster R-CNN demo')
-    parser.add_argument('--net', dest='demo_net', help='Network to use [vgg16 res101]',
-                        choices=NETS.keys(), default='res101')
-    parser.add_argument('--dataset', dest='dataset', help='Trained dataset [pascal_voc pascal_voc_0712]',
-                        choices=DATASETS.keys(), default='pascal_voc_0712')
+    parser = argparse.ArgumentParser(description='disperse bird apply ')
+    parser.add_argument('--gpu_num', dest='gpu_num', help='please input gpu number')
     args = parser.parse_args()
-
     return args
 
 
@@ -222,15 +238,15 @@ def picture_deal():
     plt.show()
 
 
-def video_deal():
-    cap = cv2.VideoCapture(project_address + '/data/video/07.mp4')
+def video_deal(video_name):
+    cap = cv2.VideoCapture(project_address + '/data/video/' + video_name)
     # while (cap.isOpened()):
     print('Monitoring')
     while (True):
         ret, frame = cap.read()
         if not (ret):
             print('略过')
-            cap = cv2.VideoCapture('rtsp://admin:123456@192.168.1.13:554')
+            cap = cv2.VideoCapture(project_address + '/data/video/' + video_name)
             ret, frame = cap.read()
             demo_video(sess, net, frame, 1, '')
             key = cv2.waitKey(1)
@@ -267,7 +283,7 @@ if __name__ == '__main__':
     # 触发报警的最大"连续"识别次数
     max_residence_frame = business_path_config['max_lazy_frequency']
     demonet = 'vgg16'
-    tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_200000.ckpt'
+    tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_300000.ckpt'
     if not os.path.isfile(tfmodel + '.meta'):
         print(tfmodel)
         raise IOError(('{:s} not found.\nDid you download the proper networks from '
@@ -310,10 +326,9 @@ if __name__ == '__main__':
         for process in processes:
             process.join()
     elif data_sources == 'local_video':
-        cap = cv2.VideoCapture(os.getcwd() + '/data/video/07.mp4')
-        video_deal()
+        video_deal('05.mp4')
     elif data_sources == 'local_pic':
-        video_deal()
+        picture_deal()
 
 
 

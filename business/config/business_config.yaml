@@ -7,7 +7,7 @@ camera_url:
 max_lazy_frequency: 2
 
 # 检测目标阈值(精度)
-detect_threshold: 0.7
+detect_threshold: 0.85
 
 # 非极大值抑制（搜索框重贴）值越小重叠度越高
 nms_threshold: 0.1
@@ -30,11 +30,17 @@ ftp_ip_port_user_passwd:
   - ders
   - abc123
 
-# 捕获视频路径
-ftp_data_path: /mnt/sdb/ftp/data/capture
+# 捕获视频ftp路径(未用)
+ftp_cap_video_path: /mnt/sdb/ftp/data/picture_capture
+#ftp_data_path: D:/GitHubWorkspace/EvictionBirdAI/picture_capture
+
+# 捕获视频本地路径
+#local_cap_video_path: /mnt/sdb/ftp/data/picture_capture
+local_cap_video_path: D:/GitHubWorkspace/EvictionBirdAI/picture_capture
 
 # 日志路径
-local_business_logs_path: /mnt/sdb/qn_business_logs
+#local_business_logs_path: /mnt/sdb/qn_business_logs
+local_business_logs_path: D:/GitHubWorkspace/EvictionBirdAI/qn_business_logs
 
 # 日志保留时间(月)
 local_business_logs_retain_time: 12
