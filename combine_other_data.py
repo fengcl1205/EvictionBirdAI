@@ -88,6 +88,31 @@ def updata_file_name():
     sys.stdin.flush()
 
 
+# 从混杂在一起的多类别xml删除固定一类
+def delete_spcial_cls_from_xml():
+    xmlpath = r'E:/Data/outputs/'
+    imagespath = r'E:/Data/other/'
+    fileListImages = os.listdir(imagespath)
+    fileListXml = os.listdir(xmlpath)
+    targetFiles = list()
+    for fileName in fileListXml:
+        doc = ET.parse(xmlpath + fileName)
+        root = doc.getroot()
+        for child in root.findall('object'):
+            if child.find('name').text == 'bird':
+                targetFiles.append(fileName.split('.')[:-1])
+    for fileName in fileListXml:
+        if fileName.split('.')[:-1] in targetFiles:
+            print(fileName)
+            os.remove(xmlpath + fileName)
+    for fileName in fileListImages:
+        if fileName.split('.')[:-1] in targetFiles:
+            print(fileName)
+            os.remove(imagespath + fileName)
+
+    print('over')
+
+
 # find_xml_file_from_images_name()
 # updata_file_name()
 xml_images_synchronization()
