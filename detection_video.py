@@ -76,11 +76,6 @@ class IpCamCapture:
     def get_frame(self):
         return self.Frame
 
-    def get_frame_width_higth(self):
-        width = (int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH)))
-        height = (int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-        return width, height
-
     def query_frame(self):
         while not self.isstop:
             self.status, self.Frame = self.capture.read()
@@ -120,7 +115,7 @@ def vis_detections(im, class_name, dets, inds, CONF_THRESH):
     plt.tight_layout()
     plt.draw()
 
-
+'''
 # picture detection
 def demo(sess, net, image_name):
     """Detect object classes in an image using pre-computed object proposals."""
@@ -149,7 +144,7 @@ def demo(sess, net, image_name):
         if len(inds) == 0:
             return
         vis_detections(im, cls, dets, inds, CONF_THRESH)  # 图片检测构图
-
+'''
 
 # 内容、时间、摄像头编号
 def socket_client_target_detection(detect_cls, detect_amount, detect_img, detect_time, camera_number, disperse_sign):
@@ -201,12 +196,16 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
 
 
 # 视频检测
-def demo_video(sess, net, frame, camera_url, max_residence_frame):
+def demo_video(sess, net, frame1, frame2, frame3, frame4, width, height, camera_url, max_residence_frame):
     """Detect object classes in an image using pre-computed object proposals."""
-    im = frame
+
     timer = Timer()
     timer.tic()
-    scores, boxes = im_detect(sess, net, im)
+    scores1, boxes1 = im_detect(sess, net, frame1)
+    scores2, boxes2 = im_detect(sess, net, frame2)
+    scores3, boxes3 = im_detect(sess, net, frame3)
+    scores4, boxes4 = im_detect(sess, net, frame4)
+
     timer.toc()
     # print('Detection took {:.3f}s for {:d} object proposals'.format(timer.total_time, boxes.shape[0]))
     # Visualize detections for each class
@@ -214,15 +213,52 @@ def demo_video(sess, net, frame, camera_url, max_residence_frame):
     NMS_THRESH = nms_threshold
     for cls_ind, cls in enumerate(CLASSES[1:]):
         cls_ind += 1  # because we skipped background
-        cls_boxes = boxes[:, 4 * cls_ind:4 * (cls_ind + 1)]
-        cls_scores = scores[:, cls_ind]
-        dets = np.hstack((cls_boxes,
-                          cls_scores[:, np.newaxis])).astype(np.float32)
-        keep = nms(dets, NMS_THRESH)
-        dets = dets[keep, :]
-        inds = np.where(dets[:, -1] >= CONF_THRESH)[0]
-        im = vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)
-        cv2.imshow('video', im)
+        cls_boxes1 = boxes1[:, 4 * cls_ind:4 * (cls_ind + 1)]
+        cls_scores1 = scores1[:, cls_ind]
+        dets1 = np.hstack((cls_boxes1,
+                          cls_scores1[:, np.newaxis])).astype(np.float32)
+        keep1 = nms(dets1, NMS_THRESH)
+        dets1 = dets1[keep1, :]
+        inds1 = np.where(dets1[:, -1] >= CONF_THRESH)[0]
+        im1 = vis_detections_video(frame1, cls, dets1, timer.start_time, timer.total_time, inds1, CONF_THRESH)
+
+        cls_boxes2 = boxes2[:, 4 * cls_ind:4 * (cls_ind + 1)]
+        cls_scores2 = scores2[:, cls_ind]
+        dets2 = np.hstack((cls_boxes2,
+                           cls_scores2[:, np.newaxis])).astype(np.float32)
+        keep2 = nms(dets2, NMS_THRESH)
+        dets2 = dets2[keep2, :]
+        inds2 = np.where(dets2[:, -1] >= CONF_THRESH)[0]
+        im2 = vis_detections_video(frame2, cls, dets2, timer.start_time, timer.total_time, inds2, CONF_THRESH)
+
+        cls_boxes3 = boxes3[:, 4 * cls_ind:4 * (cls_ind + 1)]
+        cls_scores3 = scores3[:, cls_ind]
+        dets3 = np.hstack((cls_boxes3,
+                           cls_scores3[:, np.newaxis])).astype(np.float32)
+        keep3 = nms(dets3, NMS_THRESH)
+        dets3 = dets3[keep3, :]
+        inds3 = np.where(dets3[:, -1] >= CONF_THRESH)[0]
+        im3 = vis_detections_video(frame3, cls, dets3, timer.start_time, timer.total_time, inds3, CONF_THRESH)
+
+        cls_boxes4 = boxes4[:, 4 * cls_ind:4 * (cls_ind + 1)]
+        cls_scores4 = scores4[:, cls_ind]
+        dets4 = np.hstack((cls_boxes4,
+                           cls_scores4[:, np.newaxis])).astype(np.float32)
+        keep4 = nms(dets4, NMS_THRESH)
+        dets4 = dets4[keep4, :]
+        inds4 = np.where(dets4[:, -1] >= CONF_THRESH)[0]
+        im4 = vis_detections_video(frame4, cls, dets4, timer.start_time, timer.total_time, inds4, CONF_THRESH)
+
+        frameLeftUp = cv2.resize(im1, (int(width // 4), int(height // 4)), interpolation=cv2.INTER_CUBIC)
+        frameRightUp = cv2.resize(im2, (int(width // 4), int(height // 4)), interpolation=cv2.INTER_CUBIC)
+        frameLeftDown = cv2.resize(im3, (int(width // 4), int(height // 4)), interpolation=cv2.INTER_CUBIC)
+        frameRightDown = cv2.resize(im4, (int(width // 4), int(height // 4)), interpolation=cv2.INTER_CUBIC)
+        ss1 = np.hstack((frameLeftUp, frameRightUp))
+        ss2 = np.hstack((frameLeftDown, frameRightDown))
+        ss = np.vstack((ss1, ss2))
+        cv2.setWindowProperty('video', cv2.WND_PROP_FULLSCREEN,
+                              cv2.WINDOW_FULLSCREEN)
+        cv2.imshow('video', ss)
         # socket_client_target_detection(cls, timer.start_time, cameraNumber, images, targetNum)
 
 
@@ -269,7 +305,7 @@ def picture_deal():
     for im_name in im_names:
         print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
         print('Demo for data/demo/{}'.format(im_name))
-        demo(sess, net, im_name)
+        # demo(sess, net, im_name)
     plt.show()
 
 
@@ -349,17 +385,34 @@ def cam(queue, camera_url):
     timer_trigger = Timer()
     timer_trigger.tic()
 
-    ipcam = IpCamCapture(camera_url)
-    ipcam.start()
+    ipcam1 = IpCamCapture(camera_url[0])
+    ipcam2 = IpCamCapture(camera_url[1])
+    ipcam3 = IpCamCapture(camera_url[2])
+    ipcam4 = IpCamCapture(camera_url[3])
+    ipcam1.start()
+    ipcam2.start()
+    ipcam3.start()
+    ipcam4.start()
+    # width, height = ipcam1.get_frame_width_higth
+    # ipcam = IpCamCapture(camera_url)
+    # ipcam.start()
     # 暂停1秒，确保影像已经填充
     time.sleep(1)
     print(str(time.time()) + ' Monitoring ...')
+    width = 1920
+    height = 1080
     while True:
-        frame = ipcam.get_frame()
-        demo_video(sess, net, frame, camera_url, max_residence_frame)
+        frame1 = ipcam1.get_frame()
+        frame2 = ipcam2.get_frame()
+        frame3 = ipcam3.get_frame()
+        frame4 = ipcam4.get_frame()
+        demo_video(sess, net, frame1, frame2, frame3, frame4, width, height, camera_url, max_residence_frame)
         key = cv2.waitKey(1)
         if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
-            ipcam.stop()
+            ipcam1.stop()
+            ipcam2.stop()
+            ipcam3.stop()
+            ipcam4.stop()
             break
     input_p.close()
     print(str(time.time()) + ' 识别系统已关闭')
@@ -384,8 +437,9 @@ if __name__ == '__main__':
         processes = list()
         # for camera_url in camera_url_list:
         #     processes.append(multiprocessing.Process(target=cam, args=(queue, camera_url, )))
-        for index in range(len(camera_url_list)):
-            processes.append(multiprocessing.Process(target=cam, args=(queue, camera_url_list[index])))
+        processes.append(multiprocessing.Process(target=cam, args=(queue, camera_url_list)))
+        # for index in range(len(camera_url_list)):
+        #     processes.append(multiprocessing.Process(target=cam, args=(queue, camera_url_list[index])))
         for process in processes:
             process.daemon = True
             process.start()

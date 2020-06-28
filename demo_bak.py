@@ -19,7 +19,7 @@ import time
 from socket import *
 import threading
 from business.utils import yaml_helper
-import multiprocessing
+import multiprocessing as mp
 from business.utils import path_helper as ph
 
 
@@ -75,11 +75,6 @@ class IpCamCapture:
     # 当有需要影像时，再回传最新的影像。
     def get_frame(self):
         return self.Frame
-
-    def get_frame_width_higth(self):
-        width = (int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH)))
-        height = (int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-        return width, height
 
     def query_frame(self):
         while not self.isstop:
@@ -152,7 +147,7 @@ def demo(sess, net, image_name):
 
 
 # 内容、时间、摄像头编号
-def socket_client_target_detection(detect_cls, detect_amount, detect_img, detect_time, camera_number, disperse_sign):
+def socket_client_target_detection(detectContent, detectTime, cameraNumber, images, targetNum):
     # create socket
     tcp_client_socket = socket(AF_INET, SOCK_STREAM)
     # target info
@@ -161,8 +156,7 @@ def socket_client_target_detection(detect_cls, detect_amount, detect_img, detect
     # connet servier
     tcp_client_socket.connect((server_ip, server_port))
     # send info
-    send_data = {'disperse_sign': disperse_sign, 'detectContent': detect_cls, 'detect_amount': detect_amount,
-                 'detect_img': detect_img, 'detectTime': detect_time, 'cameraNumber': camera_number}
+    send_data = {'detectContent':detectContent, 'detectTime': detectTime, 'cameraNumber': cameraNumber}
     tcp_client_socket.send(bytes(str(send_data), encoding='gbk'))
     # Return data
     recvData = tcp_client_socket.recv(1024)
@@ -174,8 +168,7 @@ def socket_client_target_detection(detect_cls, detect_amount, detect_img, detect
 def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CONF_THRESH):
     """Draw detected bounding boxes."""
     if len(inds) == 0:
-        # cv2.imshow("video capture", im)
-        return im
+        cv2.imshow("video capture", im)
     else:
         for i in inds:
             bbox = dets[i, :4]  # coordinate
@@ -197,7 +190,7 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
             cv2.putText(im, str(current_time), (30,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # drawing time
             cv2.putText(im, "fps:"+str(fps), (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # frame frequency
             cv2.putText(im, "takes time :"+str(round(time_takes*1000, 1))+"ms", (30, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # detection time
-        return im
+        cv2.imshow("video capture", im)
 
 
 # 视频检测
@@ -221,8 +214,7 @@ def demo_video(sess, net, frame, camera_url, max_residence_frame):
         keep = nms(dets, NMS_THRESH)
         dets = dets[keep, :]
         inds = np.where(dets[:, -1] >= CONF_THRESH)[0]
-        im = vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)
-        cv2.imshow('video', im)
+        vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)
         # socket_client_target_detection(cls, timer.start_time, cameraNumber, images, targetNum)
 
 
@@ -236,35 +228,8 @@ def parse_args():
 
 
 def picture_deal():
-    demonet = 'vgg16'
-    tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_300000.ckpt'
-    if not os.path.isfile(tfmodel + '.meta'):
-        print(tfmodel)
-        raise IOError(('{:s} not found.\nDid you download the proper networks from '
-                       'our server and place them properly?').format(tfmodel + '.meta'))
-
-    # set config
-    tfconfig = tf.ConfigProto(allow_soft_placement=True)
-    tfconfig.gpu_options.allow_growth = True
-
-    # init session
-    sess = tf.Session(config=tfconfig)
-    # load network
-    if demonet == 'vgg16':
-        net = vgg16(batch_size=1)
-    else:
-        raise NotImplementedError
-
-    n_classes = len(CLASSES)
-    # create the structure of the net having a certain shape (which depends on the number of classes)
-    net.create_architecture(sess, "TEST", n_classes,
-                            tag='default', anchor_scales=[8, 16, 32, 64])
-    saver = tf.train.Saver()
-    saver.restore(sess, tfmodel)
-
-    print('Loaded network {:s}'.format(tfmodel))
     # 图片
-    im_names = ['1.jpg','2.jpg', '3.jpg','4.jpg','5.jpg','6.jpg','7.jpg','8.jpg','9.jpg','10.jpg','11.jpg','12.jpg','13.jpg','14.jpg','15.jpg']
+    im_names = ['1.jpg','2.jpg','3.jpg','4.jpg','5.jpg','6.jpg','7.jpg','8.jpg','9.jpg','10.jpg','11.jpg','12.jpg','13.jpg','14.jpg','15.jpg']
     # im_names = ['0007.jpg']
     for im_name in im_names:
         print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
@@ -274,33 +239,6 @@ def picture_deal():
 
 
 def video_deal(video_name):
-    demonet = 'vgg16'
-    tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_300000.ckpt'
-    if not os.path.isfile(tfmodel + '.meta'):
-        print(tfmodel)
-        raise IOError(('{:s} not found.\nDid you download the proper networks from '
-                       'our server and place them properly?').format(tfmodel + '.meta'))
-
-    # set config
-    tfconfig = tf.ConfigProto(allow_soft_placement=True)
-    tfconfig.gpu_options.allow_growth = True
-
-    # init session
-    sess = tf.Session(config=tfconfig)
-    # load network
-    if demonet == 'vgg16':
-        net = vgg16(batch_size=1)
-    else:
-        raise NotImplementedError
-
-    n_classes = len(CLASSES)
-    # create the structure of the net having a certain shape (which depends on the number of classes)
-    net.create_architecture(sess, "TEST", n_classes,
-                            tag='default', anchor_scales=[8, 16, 32, 64])
-    saver = tf.train.Saver()
-    saver.restore(sess, tfmodel)
-
-    print('Loaded network {:s}'.format(tfmodel))
     cap = cv2.VideoCapture(project_address + '/data/video/' + video_name)
     # while (cap.isOpened()):
     print('Monitoring')
@@ -310,45 +248,18 @@ def video_deal(video_name):
             print('略过')
             cap = cv2.VideoCapture(project_address + '/data/video/' + video_name)
             ret, frame = cap.read()
-            # demo_video(sess, net, frame, 1, '')
+            demo_video(sess, net, frame, 1, '')
             key = cv2.waitKey(1)
             if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
                 break
             continue
-        # demo_video(sess, net, frame, 1)
+        demo_video(sess, net, frame, 1, '')
         key = cv2.waitKey(1)
         if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
             break
 
 
 def cam(queue, camera_url):
-    demonet = 'vgg16'
-    tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_300000.ckpt'
-    if not os.path.isfile(tfmodel + '.meta'):
-        raise IOError(('{:s} not found.\nDid you download the proper networks from '
-                       'our server and place them properly?').format(tfmodel + '.meta'))
-    # set config
-    tfconfig = tf.ConfigProto(allow_soft_placement=True)
-    tfconfig.gpu_options.allow_growth = True
-
-    # init session
-    sess = tf.Session(config=tfconfig)
-    # load networkzhe
-    if demonet == 'vgg16':
-        net = vgg16(batch_size=1)
-    else:
-        raise NotImplementedError
-
-    n_classes = len(CLASSES)
-    # create the structure of the net having a certain shape (which depends on the number of classes)
-    net.create_architecture(sess, "TEST", n_classes,
-                            tag='default', anchor_scales=[8, 16, 32, 64])
-    saver = tf.train.Saver()
-    saver.restore(sess, tfmodel)
-    # print('Loaded network {:s}'.format(tfmodel))
-    timer_trigger = Timer()
-    timer_trigger.tic()
-
     ipcam = IpCamCapture(camera_url)
     ipcam.start()
     # 暂停1秒，确保影像已经填充
@@ -361,7 +272,6 @@ def cam(queue, camera_url):
         if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
             ipcam.stop()
             break
-    input_p.close()
     print(str(time.time()) + ' 识别系统已关闭')
     cv2.destroyAllWindows()
 
@@ -372,26 +282,49 @@ if __name__ == '__main__':
     business_path_config = yaml_helper.get_data_from_yaml(project_address + '/business/config/business_config.yaml')
     # 触发报警的最大"连续"识别次数
     max_residence_frame = business_path_config['max_lazy_frequency']
-    output_p, input_p = multiprocessing.Pipe()
+    demonet = 'vgg16'
+    tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_300000.ckpt'
+    if not os.path.isfile(tfmodel + '.meta'):
+        print(tfmodel)
+        raise IOError(('{:s} not found.\nDid you download the proper networks from '
+                       'our server and place them properly?').format(tfmodel + '.meta'))
 
-    data_sources = 'net_video'
+    # set config
+    tfconfig = tf.ConfigProto(allow_soft_placement=True)
+    tfconfig.gpu_options.allow_growth = True
+
+    # init session
+    sess = tf.Session(config=tfconfig)
+    # load network
+    if demonet == 'vgg16':
+        net = vgg16(batch_size=1)
+    else:
+        raise NotImplementedError
+
+    n_classes = len(CLASSES)
+    # create the structure of the net having a certain shape (which depends on the number of classes)
+    net.create_architecture(sess, "TEST", n_classes,
+                            tag='default', anchor_scales=[8, 16, 32, 64])
+    saver = tf.train.Saver()
+    saver.restore(sess, tfmodel)
+
+    print('Loaded network {:s}'.format(tfmodel))
+
+    data_sources = 'local_video'
 
     if data_sources == 'net_video':
         # 网络摄像头
         camera_url_list = business_path_config['camera_url']
-        multiprocessing.set_start_method(method='spawn')  # init
-        queue = multiprocessing.Queue(maxsize=10)
+        mp.set_start_method(method='spawn')  # init
+        queue = mp.Queue(maxsize=10)
         processes = list()
-        # for camera_url in camera_url_list:
-        #     processes.append(multiprocessing.Process(target=cam, args=(queue, camera_url, )))
-        for index in range(len(camera_url_list)):
-            processes.append(multiprocessing.Process(target=cam, args=(queue, camera_url_list[index])))
+        for camera_url in camera_url_list:
+            processes.append(mp.Process(target=cam, args=(queue, camera_url)))
         for process in processes:
             process.daemon = True
             process.start()
         for process in processes:
             process.join()
-
     elif data_sources == 'local_video':
         video_deal('02.mp4')
     elif data_sources == 'local_pic':

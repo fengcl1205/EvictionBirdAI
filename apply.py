@@ -46,7 +46,7 @@ TARGET_CLASSES = tuple(target_detect_categories)
 # CLASSES = ('__background__',  'crow', 'magpie', 'pigeon', 'swallow', 'sparrow', 'airplane',  'person')
 # 当前触发报警的"连续"识别次数
 residence_frame = 0
-
+np.set_printoptions(threshold=np.inf)
 
 # 接收摄影机串流影像，采用多线程的方式，降低缓冲区栈图帧的问题。
 class IpCamCapture:
@@ -92,90 +92,72 @@ class IpCamCapture:
             raise
 
 
-# ftp模块
-class QnFtp:
+class socket_c:
     def __init__(self):
-        self.ip = business_path_config['ftp_ip_port_user_passwd'][0]
-        self.port = business_path_config['ftp_ip_port_user_passwd'][1]
-        self.user = business_path_config['ftp_ip_port_user_passwd'][2]
-        self.passwd = business_path_config['ftp_ip_port_user_passwd'][3]
-        self.ftp_cap_video_path = business_path_config['ftp_cap_video_path']
-        self.bufsize = 4096
-        self.ftp = FTP()
-        self.ftp.set_debuglevel(2)
-        # 登录
+        self.tcp_client_socket = socket(AF_INET, SOCK_STREAM)
+        self.server_ip = business_path_config['application_system_ip_port'][0]
+        self.server_port = int(business_path_config['application_system_ip_port'][1])
+        self.send_data = dict()
+
+    def socket_conn(self):
         try:
-            self.ftp.connect(self.ip, self.port)
-            self.ftp.login(self.user, self.passwd)
-            log_helper.log_out('info', local_business_logs_path, ' ftp登录成功')
+            # connet servier
+            self.tcp_client_socket.connect((self.server_ip, self.server_port))
         except BaseException as e:
             log_helper.log_out('error', local_business_logs_path,
-                               'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                               + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                               + str(e))
-            exit()  # 停止程序
-            raise
+                       'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                       + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                       + str(e))
 
-    # 上传
-    def upload(self, detect_time, images):
+    def socket_push(self, detect_cls, detect_amount, detect_img, detect_time, camera_number, disperse_sign):
         try:
-            time_ymd = str(detect_time).split()[0]  # 以日为单位存储
-            self.judge_ftp_path(time_ymd)
-            self.ftp.storbinary('STOR %s' % os.path.basename(detect_time), images, self.bufsize)  # 上传文件
+            if disperse_sign == '1' and detect_amount != 0:
+                self.send_data = {"disperseSign": disperse_sign, "detectContent": detect_cls,
+                                  "detectAmount": detect_amount,
+                                  "detectTime": detect_time, "cameraNumber": camera_number}
+                self.tcp_client_socket.send(str(self.send_data).encode())
         except BaseException as e:
             log_helper.log_out('error', local_business_logs_path,
-                           'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e))
-            # exit()  # 停止程序
-            raise
+                       'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                       + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                       + str(e))
 
-        log_helper.log_out('info', local_business_logs_path,
-                           str(detect_time) + ' 上传成功')
+    def socket_recv(self):
+        recvData = self.tcp_client_socket.recv(1024)
+        return recvData
 
-    # 判断ftp路径是否存在
-    def judge_ftp_path(self, path):
-        try:
-            self.ftp.cwd(path)
-        except error_perm:
-            try:
-                self.ftp.mkd(path)
-            except BaseException as e:
-                log_helper.log_out('error', local_business_logs_path,
-                           'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e))
-                raise
-
-    # 查询并删除指定天数前的视频捕捉图像
-    def clear_cap_img_dir(self, current_time_y, current_time_m, current_time_d):
-        try:
-            self.ftp.cwd(self.ftp_cap_video_path)
-        except:
-            self.ftp.mkd(self.ftp_cap_video_path)
-        try:
-            files = self.ftp.nlst()
-            for file in files:  # 例2020-06-12
-                # 满足条件则删除目录
-                if datetime.datetime(current_time_y, current_time_m, current_time_d) - \
-                        datetime.datetime(int(file.split('-')[0]), int(file.split('-')[1]), int(file.split('-')[2])) \
-                        > ftp_images_retain_time:
-                    self.ftp.delete(file)
-        except BaseException as e:
-            log_helper.log_out('error', local_business_logs_path,
-                               'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                               + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                               + str(e))
-            raise
-
-    # 退出
-    def ftp_quit(self):
-        self.ftp.set_debuglevel(0)
-        self.ftp.quit()
+    def socket_clse(self):
+        self.tcp_client_socket.close()
 
 
-# 检测到目标的图像并且持久化
+# 检测到目标的图片并且持久化
 def detection_persistence(detect_time, images):
+    '''
+    qn_ftp = QnFtp()
+    try:
+        qn_ftp.upload(detect_time, images)
+    except BaseException as e:
+         log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                           + str(e))
+         raise
+    finally:
+        qn_ftp.ftp_quit()
+    '''
+    try:
+        path = local_cap_video_path + '/' + detect_time.split()[0]
+        if not os.path.exists(path):
+            os.makedirs(path)
+        cv2.imwrite(path + '/' + detect_time + '.jpg', images)
+    except BaseException as e:
+        log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                           + str(e))
+        raise
+
+
+# 检测到目标的视频并且持久化
+def detection_video_persistence(detect_time, images):
     '''
     qn_ftp = QnFtp()
     try:
@@ -203,15 +185,15 @@ def detection_persistence(detect_time, images):
 # 清空本地指定日期范围外的日志文件
 def clear_local_business_logs(current_time_y, current_time_m, current_time_d):
     try:
-        files = os.listdir(local_cap_video_path)
+        files = os.listdir(local_business_logs_path)
         for file in files:  # 例2020-06-12
-            file_path = os.path.join(local_cap_video_path, file)
+            file_path = os.path.join(local_business_logs_path, file)
             if os.path.isdir(file_path):  # 日志是按月为单位目录存储的
                 if (current_time_y - int(file.split('-')[0])) * 12 + (current_time_m - int(file.split('-')[1]))\
                         > ftp_images_retain_time:
-                    shutil.rmtree(os.path.join(local_cap_video_path, file))
+                    os.remove(os.path.join(local_business_logs_path, file))
     except BaseException as e:
-        log_helper.log_out('error', local_cap_video_path,
+        log_helper.log_out('error', local_business_logs_path,
                        'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                        + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
                        + str(e))
@@ -247,7 +229,7 @@ def parse_args():
 
 
 # 发送消息到应用系统
-def socket_client_target_detection(detect_cls, detect_num, detect_img, detect_time, camera_number, disperse_sign):
+def socket_client_target_detection(detect_cls, detect_amount, detect_img, detect_time, camera_number, disperse_sign):
     # create socket
     tcp_client_socket = socket(AF_INET, SOCK_STREAM)
     try:
@@ -257,8 +239,10 @@ def socket_client_target_detection(detect_cls, detect_num, detect_img, detect_ti
         # connet servier
         tcp_client_socket.connect((server_ip, server_port))
         # send info
-        send_data = {'detectContent': detect_cls, 'detectTime': detect_time, 'cameraNumber': camera_number}
-        tcp_client_socket.send(bytes(str(send_data), encoding='gbk'))
+        send_data = {"disperseSign": disperse_sign, "detectContent": detect_cls, "detectAmount": detect_amount,
+                      "detectTime": detect_time, "cameraNumber": camera_number}
+        # print(str(send_data))
+        tcp_client_socket.send(str(send_data).encode())
         # Return data
         recvData = tcp_client_socket.recv(1024)
     except BaseException as e:
@@ -266,41 +250,42 @@ def socket_client_target_detection(detect_cls, detect_num, detect_img, detect_ti
                        'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                        + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
                        + str(e))
-        raise
-    finally:
-        tcp_client_socket.close()
+        socket_client_target_detection(detect_cls, detect_amount, detect_img, detect_time, camera_number, disperse_sign)
+    #finally:
+    #    tcp_client_socket.close()
 
 
 # video detection drawing
 def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CONF_THRESH):
     """Draw detected bounding boxes."""
-    for i in inds:
-        bbox = dets[i, :4]  # coordinate
-        score = dets[i, -1]  # degree of confidence
-        x1 = bbox[0]
-        y1 = bbox[1]
-        x2 = bbox[2]
-        y2 = bbox[3]
-        end_time = time.time()
-        # current_time = time.ctime()  # current time
-        fps = round(1/(end_time - start_time), 2)
-        if class_name in target_detect_categories:
-            cv2.rectangle(im, (x1, y1), (x2, y2), (0, 0, 255), 2)
-        else:
-            cv2.rectangle(im, (x1, y1), (x2, y2), (255, 0, 0), 2)
-        '''
-        cv2.putText(im, str(round(score, 2)), (int(x1), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)  # score
-        cv2.putText(im, str(class_name), (int(x1+70), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)  # type
-        cv2.putText(im, str(current_time), (30,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # drawing time
-        cv2.putText(im, "fps:"+str(fps), (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # frame frequency
-        cv2.putText(im, "takes time :"+str(round(time_takes*1000, 1))+"ms", (30, 90), cv2.FONT_HERSHEY_SIMPLEX,
-                    1, (255, 255, 255), 2)  # detection time
-        '''
+    if len(inds) != 0:
+        for i in inds:
+            bbox = dets[i, :4]  # coordinate
+            score = dets[i, -1]  # degree of confidence
+            x1 = bbox[0]
+            y1 = bbox[1]
+            x2 = bbox[2]
+            y2 = bbox[3]
+            end_time = time.time()
+            # current_time = time.ctime()  # current time
+            fps = round(1/(end_time - start_time), 2)
+            if class_name in TARGET_CLASSES:
+                cv2.rectangle(im, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            else:
+                cv2.rectangle(im, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            '''
+            cv2.putText(im, str(round(score, 2)), (int(x1), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)  # score
+            cv2.putText(im, str(class_name), (int(x1+70), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)  # type
+            cv2.putText(im, str(current_time), (30,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # drawing time
+            cv2.putText(im, "fps:"+str(fps), (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # frame frequency
+            cv2.putText(im, "takes time :"+str(round(time_takes*1000, 1))+"ms", (30, 90), cv2.FONT_HERSHEY_SIMPLEX,
+                        1, (255, 255, 255), 2)  # detection time
+            '''
     return im
 
 
 # 摄像头视频检测
-def demo_video(sess, net, frame, camera_url, max_residence_frame):
+def demo_video(sess, net, frame, camera_url, max_residence_frame, sc):
     """Detect object classes in an image usi， ng pre-computed object proposals."""
     global residence_frame
     im = frame
@@ -313,33 +298,56 @@ def demo_video(sess, net, frame, camera_url, max_residence_frame):
     # Visualize detections for each class
     CONF_THRESH = detect_threshold  # threshold
     NMS_THRESH = nms_threshold
-    for cls_ind, cls in enumerate(CLASSES[1:]):
-        cls_ind += 1  # because we skipped background
-        cls_boxes = boxes[:, 4 * cls_ind:4 * (cls_ind + 1)]
-        cls_scores = scores[:, cls_ind]
-        dets = np.hstack((cls_boxes,
-                          cls_scores[:, np.newaxis])).astype(np.float32)
-        keep = nms(dets, NMS_THRESH)
-        dets = dets[keep, :]
-        inds = np.where(dets[:, -1] >= CONF_THRESH)[0]
-        if cls in target_detect_categories and len(inds) != 0:
-            residence_frame += 1
-            if residence_frame == max_residence_frame:
-                images = vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)
-                detect_time = datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S.%f')
-                socket_client_target_detection(cls, len(inds), images, detect_time, camera_url, True)
-                # 多线程写入磁盘
-                t_persistence = threading.Thread(target=detection_persistence, daemon=True, args=(detect_time, images)).start()
-                t_persistence.join()  # 设置主线程等待子线程结束
-                timer.tic()  # 修改起始时间
-                residence_frame = 0
-                warning_flag = True
-        else:
-            residence_frame = 0
-        if not warning_flag:
+    try:
+        video_name = ''
+        for cls_ind, cls in enumerate(CLASSES[1:]):
+            cls_ind += 1  # because we skipped background
+            cls_boxes = boxes[:, 4 * cls_ind:4 * (cls_ind + 1)]
+            cls_scores = scores[:, cls_ind]
+            dets = np.hstack((cls_boxes,
+                              cls_scores[:, np.newaxis])).astype(np.float32)
+            keep = nms(dets, NMS_THRESH)
+            dets = dets[keep, :]
+            inds = np.where(dets[:, -1] >= CONF_THRESH)[0]
             images = vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)
-            socket_client_target_detection(cls, len(inds), images, time.ctime(), camera_url, False)
+            frame = cv2.resize(images, (int(1920 // 2), int(1080 // 2)), interpolation=cv2.INTER_CUBIC)
+            if camera_url == 'rtsp://admin:123456@192.168.1.13:554':
+                video_name = 'South Tower'
+            elif camera_url == 'rtsp://admin:123456@192.168.1.14:554':
+                video_name = 'North Tower'
+            elif camera_url == 'rtsp://admin:123456@192.168.1.15:554':
+                video_name = 'Directional Station'
+            elif camera_url == 'rtsp://admin:123456@192.168.1.16:554':
+                video_name = 'North Slide'
+            cv2.imshow(video_name, frame)
+            # 多线程写入磁盘
+            detect_time = datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S.%f')
+            # t_persistence = threading.Thread(target=detection_persistence, daemon=True, args=(detect_time, images)).start()
+            # # t_persistence.join()  # 设置主线程等待子线程结束
 
+            #
+            # if cls in target_detect_categories:
+            #     residence_frame += 1
+            #     if residence_frame == max_residence_frame:# ?????????????????????????????/有问题
+            #         sc.socket_conn()
+            #         sc.socket_push(cls, len(inds), '', detect_time, camera_url, '1')
+            #         sc.socket_clse()
+            #         # socket_client_target_detection(cls, len(inds), images, detect_time, camera_url, '1')
+            #         # timer.tic()  # 修改起始时间
+            #         residence_frame = 0
+            #         warning_flag = True
+            # else:
+            #     residence_frame = 0
+
+            if cls in target_detect_categories and len(inds) != 0:
+                sc.socket_conn()
+                sc.socket_push(cls, len(inds), '', detect_time, camera_url, '1')
+                sc.socket_clse()
+    except BaseException as e:
+        log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                           + str(e))
+        raise
 
 # 相机触发函数
 def cam(queue, camera_url):
@@ -361,41 +369,50 @@ def cam(queue, camera_url):
         net = vgg16(batch_size=1)
     else:
         raise NotImplementedError
-
-    n_classes = len(CLASSES)
-    # create the structure of the net having a certain shape (which depends on the number of classes)
-    net.create_architecture(sess, "TEST", n_classes,
-                            tag='default', anchor_scales=[8, 16, 32, 64])
-    saver = tf.train.Saver()
-    saver.restore(sess, tfmodel)
-    # print('Loaded network {:s}'.format(tfmodel))
-    log_helper.log_out('info', local_business_logs_path,
-                       'Loaded network {:s}'.format(tfmodel))
-    timer_trigger = Timer()
-    timer_trigger.tic()
-    ipcam = IpCamCapture(camera_url)
-    ipcam.start_t(camera_url)
-    # 暂停1秒，确保影像已经填充队列
-    time.sleep(1)
-    # print(str(time.time()) + ' Monitoring ...')
-    log_helper.log_out('info', local_business_logs_path,
-                       str(time.time()) + ' Monitoring ...')
-    while True:
-        frame = ipcam.get_frame()
-        demo_video(sess, net, frame, camera_url, max_residence_frame)
-        key = cv2.waitKey(1)
-        if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
-            ipcam.stop(camera_url)
-            break
-    # print(str(time.time()) + ' 识别系统已关闭')
-    log_helper.log_out('info', local_business_logs_path,
-                       str(time.time()) + ' 识别系统已关闭')
-    cv2.destroyAllWindows()
+    sc = socket_c()
+    threading.Thread(target=sc.socket_conn, daemon=True, args=()).start()
+    try:
+        n_classes = len(CLASSES)
+        # create the structure of the net having a certain shape (which depends on the number of classes)
+        net.create_architecture(sess, "TEST", n_classes,
+                                tag='default', anchor_scales=[8, 16, 32, 64])
+        saver = tf.train.Saver()
+        saver.restore(sess, tfmodel)
+        # print('Loaded network {:s}'.format(tfmodel))
+        log_helper.log_out('info', local_business_logs_path,
+                           'Loaded network {:s}'.format(tfmodel))
+        timer_trigger = Timer()
+        timer_trigger.tic()
+        ipcam = IpCamCapture(camera_url)
+        ipcam.start_t(camera_url)
+        # 暂停1秒，确保影像已经填充队列
+        time.sleep(1)
+        # print(str(time.time()) + ' Monitoring ...')
+        log_helper.log_out('info', local_business_logs_path,
+                           str(time.time()) + ' Monitoring ...')
+        while True:
+            frame = ipcam.get_frame()
+            demo_video(sess, net, frame, camera_url, max_residence_frame, sc)
+            key = cv2.waitKey(1)
+            if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
+                ipcam.stop(camera_url)
+                break
+        # print(str(time.time()) + ' 识别系统已关闭')
+        log_helper.log_out('info', local_business_logs_path,
+                           str(time.time()) + ' 识别系统已关闭')
+    except BaseException as e:
+        log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                           + str(e))
+        raise
+    finally:
+        cv2.destroyAllWindows()
+        sess.close()
+        sc.socket_clse()
 
 
 # 清空指定日期前的ftp上的捕获图像和本地的日志
 def clear_folds():
-    qn_ftp = QnFtp()
     try:
         current_time_y = datetime.datetime.now().strftime('%Y')
         current_time_m = datetime.datetime.now().strftime('%m')
@@ -403,7 +420,7 @@ def clear_folds():
         scheduler = BackgroundScheduler()
         scheduler.add_job(func=clear_local_business_logs, args=(current_time_y, current_time_m, current_time_d),
                           trigger='cron', month='*', day='*', hour='0', minute='0')
-        scheduler.add_job(func=clear_local_business_logs, args=(current_time_y, current_time_m, current_time_d),
+        scheduler.add_job(func=clear_local_capture_images, args=(current_time_y, current_time_m, current_time_d),
                           trigger='cron', month='*', day='1', hour='0', minute='0')
         scheduler.start()
     except BaseException as e:
@@ -411,8 +428,6 @@ def clear_folds():
                            + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
                            + str(e))
         raise
-    finally:
-        qn_ftp.ftp_quit()
 
 
 if __name__ == '__main__':
@@ -421,7 +436,7 @@ if __name__ == '__main__':
 
     try:
         # 定期清理ftp上的检测图像和日志文件
-        clear_folds()
+        #clear_folds()
         mp.set_start_method(method='spawn')  # init
         queue = mp.Queue(maxsize=10)
         processes = list()
