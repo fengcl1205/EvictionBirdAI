@@ -73,7 +73,7 @@ ubuntu 1804 部署说明
         pip install -i http://mirrors.aliyun.com/pypi/simple matplotlib
         pip install -i http://mirrors.aliyun.com/pypi/simple pillow
         pip install -i http://mirrors.aliyun.com/pypi/simple pyyaml
-        pip install -i http://mirrors.aliyun.com/pypi/simple apscheduler
+        pip install apscheduler
 
 5.copy project
 
@@ -111,6 +111,10 @@ ubuntu 1804 部署说明
 8.在windows 环境下使用python3.6时需要修改coco/PythonAPI 中的setup.py,即添加配置（详见windows部署文档）
     然而这Ubuntu中需要把这个新加的去掉，不然会报错（没有则可略过此步骤）
     到此两处make均可通过
+
+9.手动创建日志目录并赋予权限
+sudo mkdir /mnt/sdb/qn_business_logs
+sudo chmod -R 777 /mnt/sdb/qn_business_logs
 
 9.supervisor
     安装：
