@@ -33,6 +33,8 @@ detect_categories_config = yaml_helper.get_data_from_yaml(project_address + '/bu
 max_residence_frame = business_path_config['max_lazy_frequency']
 # 网络摄像头
 camera_url_list = business_path_config['camera_url']
+# 网络摄像头名称
+camera_name_list = business_path_config['camera_name']
 ftp_images_retain_time = business_path_config['ftp_images_retain_time']
 local_business_logs_path = business_path_config['local_business_logs_path']
 local_business_logs_retain_time = business_path_config['local_business_logs_retain_time']
@@ -45,7 +47,6 @@ CLASSES = tuple(all_detect_categories)
 TARGET_CLASSES = tuple(target_detect_categories)
 # CLASSES = ('__background__',  'crow', 'magpie', 'pigeon', 'swallow', 'sparrow', 'airplane',  'person')
 # 当前触发报警的"连续"识别次数
-residence_frame = 0
 np.set_printoptions(threshold=np.inf)
 
 # 接收摄影机串流影像，采用多线程的方式，降低缓冲区栈图帧的问题。
@@ -109,7 +110,7 @@ class socket_c:
                        + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
                        + str(e))
 
-    def socket_push(self, detect_cls, detect_amount, detect_img, detect_time, camera_number, disperse_sign):
+    def socket_cend(self, detect_cls, detect_amount, detect_img, detect_time, camera_number, disperse_sign):
         try:
             if disperse_sign == '1' and detect_amount != 0:
                 self.send_data = {"disperseSign": disperse_sign, "detectContent": detect_cls,
@@ -124,7 +125,7 @@ class socket_c:
 
     def socket_recv(self):
         recvData = self.tcp_client_socket.recv(1024)
-        return recvData
+        return recvData.decode()
 
     def socket_clse(self):
         self.tcp_client_socket.close()
@@ -228,31 +229,19 @@ def parse_args():
     return args
 
 
-# 发送消息到应用系统
-def socket_client_target_detection(detect_cls, detect_amount, detect_img, detect_time, camera_number, disperse_sign):
-    # create socket
-    tcp_client_socket = socket(AF_INET, SOCK_STREAM)
-    try:
-        # target info
-        server_ip = business_path_config['application_system_ip_port'][0]
-        server_port = int(business_path_config['application_system_ip_port'][1])
-        # connet servier
-        tcp_client_socket.connect((server_ip, server_port))
-        # send info
-        send_data = {"disperseSign": disperse_sign, "detectContent": detect_cls, "detectAmount": detect_amount,
-                      "detectTime": detect_time, "cameraNumber": camera_number}
-        # print(str(send_data))
-        tcp_client_socket.send(str(send_data).encode())
-        # Return data
-        recvData = tcp_client_socket.recv(1024)
-    except BaseException as e:
-        log_helper.log_out('error', local_business_logs_path,
-                       'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                       + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                       + str(e))
-        socket_client_target_detection(detect_cls, detect_amount, detect_img, detect_time, camera_number, disperse_sign)
-    #finally:
-    #    tcp_client_socket.close()
+def target_exclude_position_unchanged(x1, y1, x2, y2):
+    old_x1 = ''
+    old_x2 = ''
+    old_y1 = ''
+    old_y2 = ''
+    if x1 == old_x1:
+        pass
+    if y1 == old_y1:
+        pass
+    if x2 == old_x2:
+        pass
+    if y2 == old_y2:
+        pass
 
 
 # video detection drawing
@@ -273,21 +262,20 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
                 cv2.rectangle(im, (x1, y1), (x2, y2), (0, 0, 255), 2)
             else:
                 cv2.rectangle(im, (x1, y1), (x2, y2), (255, 0, 0), 2)
-            '''
+
             cv2.putText(im, str(round(score, 2)), (int(x1), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)  # score
             cv2.putText(im, str(class_name), (int(x1+70), int(y1)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)  # type
-            cv2.putText(im, str(current_time), (30,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # drawing time
-            cv2.putText(im, "fps:"+str(fps), (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # frame frequency
-            cv2.putText(im, "takes time :"+str(round(time_takes*1000, 1))+"ms", (30, 90), cv2.FONT_HERSHEY_SIMPLEX,
-                        1, (255, 255, 255), 2)  # detection time
-            '''
+            # cv2.putText(im, str(current_time), (30,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # drawing time
+            # cv2.putText(im, "fps:"+str(fps), (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)  # frame frequency
+            # cv2.putText(im, "takes time :"+str(round(time_takes*1000, 1))+"ms", (30, 90), cv2.FONT_HERSHEY_SIMPLEX,
+            #            1, (255, 255, 255), 2)  # detection time
+
     return im
 
 
 # 摄像头视频检测
-def demo_video(sess, net, frame, camera_url, max_residence_frame, sc):
+def demo_video(sess, net, frame, camera_url, lazy_frequency, sc):
     """Detect object classes in an image usi， ng pre-computed object proposals."""
-    global residence_frame
     im = frame
     timer = Timer()
     timer.tic()
@@ -295,6 +283,13 @@ def demo_video(sess, net, frame, camera_url, max_residence_frame, sc):
     timer.toc()
     # 标识是否发送报警通讯
     warning_flag = False
+    # 在一针图像中是否找到目标
+    find_target_flag = False
+    # 一针图像中找到目录的种类集
+    target_names = list()
+    # 一针图像检测到所有目标类别的总次数
+    inds_total = 0
+    detect_time = None
     # Visualize detections for each class
     CONF_THRESH = detect_threshold  # threshold
     NMS_THRESH = nms_threshold
@@ -311,43 +306,40 @@ def demo_video(sess, net, frame, camera_url, max_residence_frame, sc):
             inds = np.where(dets[:, -1] >= CONF_THRESH)[0]
             images = vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)
             frame = cv2.resize(images, (int(1920 // 2), int(1080 // 2)), interpolation=cv2.INTER_CUBIC)
-            if camera_url == 'rtsp://admin:123456@192.168.1.13:554':
-                video_name = 'South Tower'
-            elif camera_url == 'rtsp://admin:123456@192.168.1.14:554':
-                video_name = 'North Tower'
-            elif camera_url == 'rtsp://admin:123456@192.168.1.15:554':
-                video_name = 'Directional Station'
-            elif camera_url == 'rtsp://admin:123456@192.168.1.16:554':
-                video_name = 'North Slide'
             cv2.imshow(video_name, frame)
+            video_name = camera_name_list[camera_url_list.index(camera_url)]
+            # if camera_url == 'rtsp://admin:123456@192.168.1.13:554':
+            #     video_name = 'South Tower'
+            # elif camera_url == 'rtsp://admin:123456@192.168.1.14:554':
+            #     video_name = 'North Tower'
+            # elif camera_url == 'rtsp://admin:123456@192.168.1.15:554':
+            #     video_name = 'Directional Station'
+            # elif camera_url == 'rtsp://admin:123456@192.168.1.16:554':
+            #     video_name = 'North Slide'
+            if len(inds) != 0 and cls in TARGET_CLASSES:
+                find_target_flag = True
+                inds_total += len(inds)
+                target_names.append(cls)
             # 多线程写入磁盘
             detect_time = datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S.%f')
             # t_persistence = threading.Thread(target=detection_persistence, daemon=True, args=(detect_time, images)).start()
             # # t_persistence.join()  # 设置主线程等待子线程结束
-
-            #
-            # if cls in target_detect_categories:
-            #     residence_frame += 1
-            #     if residence_frame == max_residence_frame:# ?????????????????????????????/有问题
-            #         sc.socket_conn()
-            #         sc.socket_push(cls, len(inds), '', detect_time, camera_url, '1')
-            #         sc.socket_clse()
-            #         # socket_client_target_detection(cls, len(inds), images, detect_time, camera_url, '1')
-            #         # timer.tic()  # 修改起始时间
-            #         residence_frame = 0
-            #         warning_flag = True
-            # else:
-            #     residence_frame = 0
-
-            if cls in target_detect_categories and len(inds) != 0:
-                sc.socket_conn()
-                sc.socket_push(cls, len(inds), '', detect_time, camera_url, '1')
-                sc.socket_clse()
+        if find_target_flag:
+            lazy_frequency += 1
+        else:
+            lazy_frequency = 0
+        if lazy_frequency == max_residence_frame:
+            sc.socket_conn()
+            sc.socket_cend(target_names, inds_total, '', detect_time, camera_url, '1')
+            sc.socket_clse()
+            lazy_frequency = 0
+        return lazy_frequency
     except BaseException as e:
         log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                            + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
                            + str(e))
         raise
+
 
 # 相机触发函数
 def cam(queue, camera_url):
@@ -390,14 +382,16 @@ def cam(queue, camera_url):
         # print(str(time.time()) + ' Monitoring ...')
         log_helper.log_out('info', local_business_logs_path,
                            str(time.time()) + ' Monitoring ...')
+        # 发现目标的连续次数
+        lazy_frequency = 0
         while True:
             frame = ipcam.get_frame()
-            demo_video(sess, net, frame, camera_url, max_residence_frame, sc)
+            lazy_frequency = demo_video(sess, net, frame, camera_url, lazy_frequency, sc)
             key = cv2.waitKey(1)
             if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
                 ipcam.stop(camera_url)
                 break
-        # print(str(time.time()) + ' 识别系统已关闭')
+        print(str(time.time()) + ' 识别系统已关闭')
         log_helper.log_out('info', local_business_logs_path,
                            str(time.time()) + ' 识别系统已关闭')
     except BaseException as e:
@@ -433,7 +427,6 @@ def clear_folds():
 if __name__ == '__main__':
     args = parse_args()
     # gpu_num = args.gpu_num
-
     try:
         # 定期清理ftp上的检测图像和日志文件
         #clear_folds()
