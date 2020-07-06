@@ -29,6 +29,7 @@ from business.utils import log_helper
 project_address = ph.get_local_project_path(os.path.dirname(os.path.abspath(__file__)), 0)
 business_path_config = yaml_helper.get_data_from_yaml(project_address + '/business/config/business_config.yaml')
 detect_categories_config = yaml_helper.get_data_from_yaml(project_address + '/business/config/detect_cls.yaml')
+eliminate_misjudgment = yaml_helper.get_data_from_yaml(project_address + '/business/config/eliminate_misjudgment.yaml')
 # 触发报警的最大"连续"识别次数
 max_residence_frame = business_path_config['max_lazy_frequency']
 # 网络摄像头
@@ -48,6 +49,7 @@ TARGET_CLASSES = tuple(target_detect_categories)
 # CLASSES = ('__background__',  'crow', 'magpie', 'pigeon', 'swallow', 'sparrow', 'airplane',  'person')
 # 当前触发报警的"连续"识别次数
 np.set_printoptions(threshold=np.inf)
+
 
 # 接收摄影机串流影像，采用多线程的方式，降低缓冲区栈图帧的问题。
 class IpCamCapture:
@@ -110,11 +112,10 @@ class socket_c:
                        + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
                        + str(e))
 
-    def socket_cend(self, detect_cls, detect_amount, detect_img, detect_time, camera_number, disperse_sign):
+    def socket_cend(self, target_info, detect_img, detect_time, camera_number, disperse_sign):
         try:
-            if disperse_sign == '1' and detect_amount != 0:
-                self.send_data = {"disperseSign": disperse_sign, "detectContent": detect_cls,
-                                  "detectAmount": detect_amount,
+            if disperse_sign == '1' and len(target_info) != 0:
+                self.send_data = {"disperseSign": disperse_sign, "detectTargetInfo": target_info,
                                   "detectTime": detect_time, "cameraNumber": camera_number}
                 self.tcp_client_socket.send(str(self.send_data).encode())
         except BaseException as e:
@@ -229,24 +230,10 @@ def parse_args():
     return args
 
 
-def target_exclude_position_unchanged(x1, y1, x2, y2):
-    old_x1 = ''
-    old_x2 = ''
-    old_y1 = ''
-    old_y2 = ''
-    if x1 == old_x1:
-        pass
-    if y1 == old_y1:
-        pass
-    if x2 == old_x2:
-        pass
-    if y2 == old_y2:
-        pass
-
-
 # video detection drawing
-def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CONF_THRESH):
+def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CONF_THRESH, camera_url):
     """Draw detected bounding boxes."""
+    invalid_target_ele = list()
     if len(inds) != 0:
         for i in inds:
             bbox = dets[i, :4]  # coordinate
@@ -255,6 +242,35 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
             y1 = bbox[1]
             x2 = bbox[2]
             y2 = bbox[3]
+            temp = ''
+            temp += str(x1)
+            temp += '#'
+            temp += str(y1)
+            temp += '#'
+            temp += str(x2)
+            temp += '#'
+            temp += str(y2)
+            # 如果坐标值在误判区则不显示
+            if len(camera_url_list[0]) != 0 and camera_url == camera_url_list[0]:
+                if temp in eliminate_misjudgment['misjudgment_coordinate_SouthTower']:
+                    invalid_target_ele.append(class_name)
+                    continue
+            elif len(camera_url_list[1]) != 0 and camera_url == camera_url_list[1]:
+                if temp in eliminate_misjudgment['misjudgment_coordinate_NorthTower']:
+                    invalid_target_ele.append(class_name)
+                    continue
+            elif len(camera_url_list[2]) != 0 and camera_url == camera_url_list[2]:
+                if temp in eliminate_misjudgment['misjudgment_coordinate_DirectionalStation']:
+                    invalid_target_ele.append(class_name)
+                    continue
+            elif len(camera_url_list[3]) != 0 and camera_url == camera_url_list[3]:
+                if temp in eliminate_misjudgment['misjudgment_coordinate_NorthSlide']:
+                    invalid_target_ele.append(class_name)
+                    continue
+            # 打印误判坐标信息
+            # log_helper.log_out('info', local_business_logs_path,
+            #                    'x1      '+str(x1)+'y1     '+str(y1)+'x2     '+str(x2)+'y2       '+str(y2))
+
             end_time = time.time()
             # current_time = time.ctime()  # current time
             fps = round(1/(end_time - start_time), 2)
@@ -270,7 +286,7 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
             # cv2.putText(im, "takes time :"+str(round(time_takes*1000, 1))+"ms", (30, 90), cv2.FONT_HERSHEY_SIMPLEX,
             #            1, (255, 255, 255), 2)  # detection time
 
-    return im
+    return im, invalid_target_ele
 
 
 # 摄像头视频检测
@@ -281,14 +297,10 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, sc):
     timer.tic()
     scores, boxes = im_detect(sess, net, im)
     timer.toc()
-    # 标识是否发送报警通讯
-    warning_flag = False
     # 在一针图像中是否找到目标
     find_target_flag = False
-    # 一针图像中找到目录的种类集
-    target_names = list()
-    # 一针图像检测到所有目标类别的总次数
-    inds_total = 0
+    # 一帧频图像中每一类目标个数
+    target_info = dict()
     detect_time = None
     # Visualize detections for each class
     CONF_THRESH = detect_threshold  # threshold
@@ -304,10 +316,11 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, sc):
             keep = nms(dets, NMS_THRESH)
             dets = dets[keep, :]
             inds = np.where(dets[:, -1] >= CONF_THRESH)[0]
-            images = vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH)
+            images, invalid_target_ele = vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH, camera_url)
             frame = cv2.resize(images, (int(1920 // 2), int(1080 // 2)), interpolation=cv2.INTER_CUBIC)
             cv2.imshow(video_name, frame)
             video_name = camera_name_list[camera_url_list.index(camera_url)]
+
             # if camera_url == 'rtsp://admin:123456@192.168.1.13:554':
             #     video_name = 'South Tower'
             # elif camera_url == 'rtsp://admin:123456@192.168.1.14:554':
@@ -316,21 +329,20 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, sc):
             #     video_name = 'Directional Station'
             # elif camera_url == 'rtsp://admin:123456@192.168.1.16:554':
             #     video_name = 'North Slide'
-            if len(inds) != 0 and cls in TARGET_CLASSES:
+            if len(inds) != 0 and cls in TARGET_CLASSES and (len(inds) - len(invalid_target_ele)) != 0:
                 find_target_flag = True
-                inds_total += len(inds)
-                target_names.append(cls)
-            # 多线程写入磁盘
+                target_info[cls] = len(inds) - len(invalid_target_ele)
+            # 多线程检测目标写入磁盘
             detect_time = datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S.%f')
-            # t_persistence = threading.Thread(target=detection_persistence, daemon=True, args=(detect_time, images)).start()
-            # # t_persistence.join()  # 设置主线程等待子线程结束
+            t_persistence = threading.Thread(target=detection_persistence, daemon=True, args=(detect_time, images)).start()
+            t_persistence.join()  # 设置主线程等待子线程结束
         if find_target_flag:
             lazy_frequency += 1
         else:
             lazy_frequency = 0
         if lazy_frequency == max_residence_frame:
             sc.socket_conn()
-            sc.socket_cend(target_names, inds_total, '', detect_time, camera_url, '1')
+            sc.socket_cend(target_info, '', detect_time, camera_url, '1')
             sc.socket_clse()
             lazy_frequency = 0
         return lazy_frequency
@@ -429,7 +441,7 @@ if __name__ == '__main__':
     # gpu_num = args.gpu_num
     try:
         # 定期清理ftp上的检测图像和日志文件
-        #clear_folds()
+        clear_folds()
         mp.set_start_method(method='spawn')  # init
         queue = mp.Queue(maxsize=10)
         processes = list()

@@ -5,7 +5,7 @@ camera_url:
   - rtsp://admin:123456@192.168.1.15:554
   - rtsp://admin:123456@192.168.1.16:554
 
-# 摄像头检测影响显示名称（顺序和camera_url顺序对应）
+# 摄像头检测影响显示名称（顺序和camera_url顺序对应,建议英文）
 camera_name:
   - South Tower
   - North Tower
@@ -14,6 +14,15 @@ camera_name:
 
 # 触发报警的最大"连续"识别次数（1表示发现即报警）
 max_lazy_frequency: 1
+
+# 最大容忍误判的跳帧数（为连续出现误判的最大帧频断开次数）
+#max_misjudgment_frame_skipping: 3
+
+# 计算误判目标的时间范围,单位分钟（从启动开始小于该时间内计算误判），当目标较多时，时间越长对内存消耗越大
+#invalid_target_computing_time: 2
+
+# 认定是误判的持续出现时间,单位秒
+#misjudgment_duration: 40
 
 # 检测目标阈值(精度)
 detect_threshold: 0.85
@@ -44,8 +53,8 @@ ftp_cap_video_path: /mnt/sdb/ftp/data/picture_capture
 #ftp_data_path: D:/GitHubWorkspace/EvictionBirdAI/picture_capture
 
 # 捕获视频本地路径
-#local_cap_video_path: /mnt/sdb/ftp/data/picture_capture
-local_cap_video_path: D:/github_workspace/EvictionBirdAI/picture_capture
+local_cap_video_path: /mnt/sdb/ftp/data/picture_capture
+#local_cap_video_path: D:/github_workspace/EvictionBirdAI/picture_capture
 
 # 日志路径
 #local_business_logs_path: /mnt/sdb/qn_business_logs
