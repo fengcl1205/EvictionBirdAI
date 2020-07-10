@@ -24,6 +24,7 @@ from ftplib import FTP, error_perm
 from apscheduler.schedulers.background import BackgroundScheduler
 from business.utils import path_helper as ph
 from business.utils import log_helper
+import sys
 
 
 project_address = ph.get_local_project_path(os.path.dirname(os.path.abspath(__file__)), 0)
@@ -433,6 +434,7 @@ def clear_folds():
         current_time_m = datetime.datetime.now().strftime('%m')
         current_time_d = datetime.datetime.now().strftime('%d')
         scheduler = BackgroundScheduler()
+        # 定时清理
         scheduler.add_job(func=clear_local_business_logs, args=(current_time_y, current_time_m, current_time_d),
                           trigger='cron', month='*', day='*', hour='0', minute='0')
         scheduler.add_job(func=clear_local_capture_images, args=(current_time_y, current_time_m, current_time_d),
@@ -449,6 +451,12 @@ if __name__ == '__main__':
     args = parse_args()
     # gpu_num = args.gpu_num
     try:
+        # 超过某时间推出程序##################
+        detect_time = datetime.datetime.now().strftime('%Y-%m-%d')
+        print(detect_time)
+        if str(detect_time) > '2020-10-15':
+            sys.exit(0)
+
         # 定期清理ftp上的检测图像和日志文件
         clear_folds()
         mp.set_start_method(method='spawn')  # init
