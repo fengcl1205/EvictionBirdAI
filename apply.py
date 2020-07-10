@@ -47,7 +47,7 @@ target_detect_categories = detect_categories_config['target_detect_categories']
 CLASSES = tuple(all_detect_categories)
 TARGET_CLASSES = tuple(target_detect_categories)
 # CLASSES = ('__background__',  'crow', 'magpie', 'pigeon', 'swallow', 'sparrow', 'airplane',  'person')
-# 当前触发报警的"连续"识别次数
+# 使得图片矩阵显示全面
 np.set_printoptions(threshold=np.inf)
 
 
@@ -133,7 +133,7 @@ class socket_c:
 
 
 # 检测到目标的图片并且持久化
-def detection_persistence(detect_time, images):
+def detection_persistence(detect_time, images, camera_url):
     '''
     qn_ftp = QnFtp()
     try:
@@ -147,7 +147,7 @@ def detection_persistence(detect_time, images):
         qn_ftp.ftp_quit()
     '''
     try:
-        path = local_cap_video_path + '/' + detect_time.split()[0]
+        path = local_cap_video_path + '/' + camera_url + '/' + detect_time.split()[0]
         if not os.path.exists(path):
             os.makedirs(path)
         cv2.imwrite(path + '/' + detect_time + '.jpg', images)
@@ -234,6 +234,7 @@ def parse_args():
 def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CONF_THRESH, camera_url):
     """Draw detected bounding boxes."""
     invalid_target_ele = list()
+    valid_target_info = list()
     if len(inds) != 0:
         for i in inds:
             bbox = dets[i, :4]  # coordinate
@@ -267,6 +268,11 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
                 if temp in eliminate_misjudgment['misjudgment_coordinate_NorthSlide']:
                     invalid_target_ele.append(class_name)
                     continue
+            # 记录有效坐标信息
+            centre_x = round(((x1 - x2) / 2), 2) + x2
+            centre_y = round(((y1 - y2) / 2), 2) + y2
+
+            valid_target_info.append(list((centre_x, centre_y)))
             # 打印误判坐标信息
             # log_helper.log_out('info', local_business_logs_path,
             #                    'x1      '+str(x1)+'y1     '+str(y1)+'x2     '+str(x2)+'y2       '+str(y2))
@@ -286,7 +292,7 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
             # cv2.putText(im, "takes time :"+str(round(time_takes*1000, 1))+"ms", (30, 90), cv2.FONT_HERSHEY_SIMPLEX,
             #            1, (255, 255, 255), 2)  # detection time
 
-    return im, invalid_target_ele
+    return im, invalid_target_ele, valid_target_info
 
 
 # 摄像头视频检测
@@ -316,7 +322,8 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, sc):
             keep = nms(dets, NMS_THRESH)
             dets = dets[keep, :]
             inds = np.where(dets[:, -1] >= CONF_THRESH)[0]
-            images, invalid_target_ele = vis_detections_video(im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH, camera_url)
+            images, invalid_target_ele, valid_target_info = vis_detections_video(
+                im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH, camera_url)
             frame = cv2.resize(images, (int(1920 // 2), int(1080 // 2)), interpolation=cv2.INTER_CUBIC)
             cv2.imshow(video_name, frame)
             video_name = camera_name_list[camera_url_list.index(camera_url)]
@@ -331,10 +338,12 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, sc):
             #     video_name = 'North Slide'
             if len(inds) != 0 and cls in TARGET_CLASSES and (len(inds) - len(invalid_target_ele)) != 0:
                 find_target_flag = True
-                target_info[cls] = len(inds) - len(invalid_target_ele)
+                # target_info[cls] = len(inds) - len(invalid_target_ele)
+                target_info[cls] = valid_target_info
             # 多线程检测目标写入磁盘
             detect_time = datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S.%f')
-            t_persistence = threading.Thread(target=detection_persistence, daemon=True, args=(detect_time, images)).start()
+            t_persistence = threading.Thread(target=detection_persistence, daemon=True, args=(
+                detect_time, images, camera_url)).start()
             t_persistence.join()  # 设置主线程等待子线程结束
         if find_target_flag:
             lazy_frequency += 1
