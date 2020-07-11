@@ -33,6 +33,8 @@ detect_categories_config = yaml_helper.get_data_from_yaml(project_address + '/bu
 eliminate_misjudgment = yaml_helper.get_data_from_yaml(project_address + '/business/config/eliminate_misjudgment.yaml')
 # 触发报警的最大"连续"识别次数
 max_residence_frame = business_path_config['max_lazy_frequency']
+# # 同一摄像头触发驱赶后的不工作时间(秒)
+dispersed_rest_time = business_path_config['dispersed_rest_time']
 # 网络摄像头
 camera_url_list = business_path_config['camera_url']
 # 网络摄像头名称
@@ -118,7 +120,7 @@ class socket_c:
             if disperse_sign == '1' and len(target_info) != 0:
                 self.send_data = {"disperseSign": disperse_sign, "detectTargetInfo": target_info,
                                   "detectTime": detect_time, "cameraNumber": camera_number}
-                self.tcp_client_socket.send(str(self.send_data).encode())
+                self.tcp_client_socket.send((str(self.send_data) + '##').encode())
         except BaseException as e:
             log_helper.log_out('error', local_business_logs_path,
                        'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
@@ -297,7 +299,7 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
 
 
 # 摄像头视频检测
-def demo_video(sess, net, frame, camera_url, lazy_frequency, sc):
+def demo_video(sess, net, frame, camera_url, lazy_frequency, sc, dispersed_time):
     """Detect object classes in an image usi， ng pre-computed object proposals."""
     im = frame
     timer = Timer()
@@ -308,7 +310,7 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, sc):
     find_target_flag = False
     # 一帧频图像中每一类目标个数
     target_info = dict()
-    detect_time = None
+    detect_time = 0.
     # Visualize detections for each class
     CONF_THRESH = detect_threshold  # threshold
     NMS_THRESH = nms_threshold
@@ -326,17 +328,8 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, sc):
             images, invalid_target_ele, valid_target_info = vis_detections_video(
                 im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH, camera_url)
             frame = cv2.resize(images, (int(1920 // 2), int(1080 // 2)), interpolation=cv2.INTER_CUBIC)
-            cv2.imshow(video_name, frame)
             video_name = camera_name_list[camera_url_list.index(camera_url)]
-
-            # if camera_url == 'rtsp://admin:123456@192.168.1.13:554':
-            #     video_name = 'South Tower'
-            # elif camera_url == 'rtsp://admin:123456@192.168.1.14:554':
-            #     video_name = 'North Tower'
-            # elif camera_url == 'rtsp://admin:123456@192.168.1.15:554':
-            #     video_name = 'Directional Station'
-            # elif camera_url == 'rtsp://admin:123456@192.168.1.16:554':
-            #     video_name = 'North Slide'
+            cv2.imshow(video_name, frame)
             if len(inds) != 0 and cls in TARGET_CLASSES and (len(inds) - len(invalid_target_ele)) != 0:
                 find_target_flag = True
                 # target_info[cls] = len(inds) - len(invalid_target_ele)
@@ -345,17 +338,18 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, sc):
             detect_time = datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S.%f')
             t_persistence = threading.Thread(target=detection_persistence, daemon=True, args=(
                 detect_time, images, camera_url)).start()
-            t_persistence.join()  # 设置主线程等待子线程结束
+            #t_persistence.join()  # 设置主线程等待子线程结束
         if find_target_flag:
             lazy_frequency += 1
         else:
             lazy_frequency = 0
-        if lazy_frequency == max_residence_frame:
-            sc.socket_conn()
-            sc.socket_cend(target_info, '', detect_time, camera_url, '1')
-            sc.socket_clse()
-            lazy_frequency = 0
-        return lazy_frequency
+        if (lazy_frequency == max_residence_frame) and ((time.time() - dispersed_time) > dispersed_rest_time):
+                dispersed_time = time.time()
+                sc.socket_conn()
+                sc.socket_cend(target_info, '', detect_time, camera_url, '1')
+                sc.socket_clse()
+                lazy_frequency = 0
+        return lazy_frequency, dispersed_time
     except BaseException as e:
         log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                            + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
@@ -366,7 +360,7 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, sc):
 # 相机触发函数
 def cam(queue, camera_url):
     demonet = 'vgg16'
-    tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_300000.ckpt'
+    tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_320700.ckpt'
     if not os.path.isfile(tfmodel + '.meta'):
         log_helper.log_out('info', local_business_logs_path,
                            tfmodel)
@@ -399,16 +393,18 @@ def cam(queue, camera_url):
         timer_trigger.tic()
         ipcam = IpCamCapture(camera_url)
         ipcam.start_t(camera_url)
-        # 暂停1秒，确保影像已经填充队列
+        # 暂停0.1秒，确保影像已经填充队列
         time.sleep(1)
         # print(str(time.time()) + ' Monitoring ...')
         log_helper.log_out('info', local_business_logs_path,
                            str(time.time()) + ' Monitoring ...')
         # 发现目标的连续次数
         lazy_frequency = 0
+        # 记录上次触发驱鸟跑时间
+        dispersed_time = 0.
         while True:
             frame = ipcam.get_frame()
-            lazy_frequency = demo_video(sess, net, frame, camera_url, lazy_frequency, sc)
+            lazy_frequency, dispersed_time = demo_video(sess, net,  frame, camera_url, lazy_frequency, sc, dispersed_time)
             key = cv2.waitKey(1)
             if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
                 ipcam.stop(camera_url)

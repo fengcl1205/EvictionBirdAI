@@ -20,6 +20,11 @@ all_detect_categories:
   - sofa
   - train
   - tvmonitor
+  - owl
+  - rabbit
+  - turtledove
+  - windmill
+  - woodpecker
   - crow
   - magpie
   - pigeon
@@ -28,6 +33,9 @@ all_detect_categories:
 
 #检测类别
 target_detect_categories:
+  - owl
+  - turtledove
+  - woodpecker
   - crow
   - magpie
   - pigeon

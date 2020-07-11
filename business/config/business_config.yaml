@@ -1,6 +1,6 @@
 # 网络摄像头地址
 camera_url:
-  - rtsp://admin:123456@192.168.1.13:554
+  - rtsp://admin:123456@192.168.1.17:554
   - rtsp://admin:123456@192.168.1.14:554
   - rtsp://admin:123456@192.168.1.15:554
   - rtsp://admin:123456@192.168.1.16:554
@@ -14,6 +14,9 @@ camera_name:
 
 # 触发报警的最大"连续"识别次数（1表示发现即报警）
 max_lazy_frequency: 1
+
+# 同一摄像头触发驱赶后的不工作时间(秒)
+dispersed_rest_time: 3
 
 # 最大容忍误判的跳帧数（为连续出现误判的最大帧频断开次数）
 #max_misjudgment_frame_skipping: 3
