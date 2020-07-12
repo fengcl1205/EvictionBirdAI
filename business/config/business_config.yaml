@@ -60,11 +60,11 @@ local_cap_video_path: /mnt/sdb/ftp/data/picture_capture
 #local_cap_video_path: D:/github_workspace/EvictionBirdAI/picture_capture
 
 # 日志路径
-#local_business_logs_path: /mnt/sdb/qn_business_logs
-local_business_logs_path: D:/github_workspace/EvictionBirdAI/qn_business_logs
+local_business_logs_path: /mnt/sdb/qn_business_logs
+#local_business_logs_path: D:/github_workspace/EvictionBirdAI/qn_business_logs
 
-# 日志保留时间(月)
-local_business_logs_retain_time: 12
+# 日志保留时间(日)
+local_business_logs_retain_time: 30
 
 # ftp上图像保留时间(日)
-ftp_images_retain_time: 30
+ftp_images_retain_time: 3

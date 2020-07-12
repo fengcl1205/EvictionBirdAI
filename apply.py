@@ -20,7 +20,6 @@ import argparse
 import threading
 from business.utils import yaml_helper
 import multiprocessing as mp
-from ftplib import FTP, error_perm
 from apscheduler.schedulers.background import BackgroundScheduler
 from business.utils import path_helper as ph
 from business.utils import log_helper
@@ -190,13 +189,12 @@ def detection_video_persistence(detect_time, images):
 # 清空本地指定日期范围外的日志文件
 def clear_local_business_logs(current_time_y, current_time_m, current_time_d):
     try:
-        files = os.listdir(local_business_logs_path)
-        for file in files:  # 例2020-06-12
-            file_path = os.path.join(local_business_logs_path, file)
-            if os.path.isdir(file_path):  # 日志是按月为单位目录存储的
-                if (current_time_y - int(file.split('-')[0])) * 12 + (current_time_m - int(file.split('-')[1]))\
-                        > ftp_images_retain_time:
-                    os.remove(os.path.join(local_business_logs_path, file))
+        data_folder_path = os.listdir(local_business_logs_path)
+        for file in data_folder_path:
+            if (datetime.date(int(current_time_y), int(current_time_m), int(current_time_d)) -
+                datetime.date(int(file.split('-')[0]), int(file.split('-')[1]),
+                              int(file.split('-')[2][:5]))).days > ftp_images_retain_time:
+                os.remove(os.path.join(local_business_logs_path, file))
     except BaseException as e:
         log_helper.log_out('error', local_business_logs_path,
                        'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
@@ -208,14 +206,16 @@ def clear_local_business_logs(current_time_y, current_time_m, current_time_d):
 # 清空本地指定日期范围外的捕获图像
 def clear_local_capture_images(current_time_y, current_time_m, current_time_d):
     try:
-        files = os.listdir(local_cap_video_path)
-        for file in files:  # 例2020-06-12
-            file_path = os.path.join(local_cap_video_path, file)
-            if os.path.isdir(file_path):  # 日志是按月为单位目录存储的
-                if (datetime.date(int(current_time_y), int(current_time_m), int(current_time_d)) -
-                    datetime.date(int(file.split('-')[0]), int(file.split('-')[1]), int(file.split('-')[2]))).days \
-                        > ftp_images_retain_time:
-                    shutil.rmtree(os.path.join(local_cap_video_path, file))
+        ip_layer = os.listdir(local_cap_video_path)
+        for ip_folder in ip_layer:
+            ip_folder_path = os.path.join(local_cap_video_path, ip_folder)
+            if os.path.isdir(ip_folder_path):
+                date_layer = os.listdir(ip_folder_path)
+                for date_folder in date_layer:
+                    if (datetime.date(int(current_time_y), int(current_time_m), int(current_time_d)) -
+                        datetime.date(int(date_folder.split('-')[0]), int(date_folder.split('-')[1]),
+                                      int(date_folder.split('-')[2]))).days > ftp_images_retain_time:
+                        shutil.rmtree(os.path.join(ip_folder_path, date_folder))
     except BaseException as e:
         log_helper.log_out('error', local_business_logs_path,
                            'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
@@ -306,6 +306,9 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, sc, dispersed_time)
     timer.tic()
     scores, boxes = im_detect(sess, net, im)
     timer.toc()
+    images = frame
+    # socket 和图片存储路径以ip命名
+    camera_url_fold_name = camera_url.split('@')[1].split(':')[0]
     # 在一针图像中是否找到目标
     find_target_flag = False
     # 一帧频图像中每一类目标个数
@@ -336,17 +339,17 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, sc, dispersed_time)
                 target_info[cls] = valid_target_info
             # 多线程检测目标写入磁盘
             detect_time = datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S.%f')
-            t_persistence = threading.Thread(target=detection_persistence, daemon=True, args=(
-                detect_time, images, camera_url)).start()
-            #t_persistence.join()  # 设置主线程等待子线程结束
         if find_target_flag:
             lazy_frequency += 1
         else:
             lazy_frequency = 0
         if (lazy_frequency == max_residence_frame) and ((time.time() - dispersed_time) > dispersed_rest_time):
                 dispersed_time = time.time()
+                t_persistence = threading.Thread(target=detection_persistence, daemon=True, args=(
+                    detect_time, images, camera_url_fold_name)).start()
+                # t_persistence.join()  # 设置主线程等待子线程结束
                 sc.socket_conn()
-                sc.socket_cend(target_info, '', detect_time, camera_url, '1')
+                sc.socket_cend(target_info, '', detect_time, camera_url_fold_name, '1')
                 sc.socket_clse()
                 lazy_frequency = 0
         return lazy_frequency, dispersed_time
@@ -393,7 +396,7 @@ def cam(queue, camera_url):
         timer_trigger.tic()
         ipcam = IpCamCapture(camera_url)
         ipcam.start_t(camera_url)
-        # 暂停0.1秒，确保影像已经填充队列
+        # 暂停1秒，确保影像已经填充队列
         time.sleep(1)
         # print(str(time.time()) + ' Monitoring ...')
         log_helper.log_out('info', local_business_logs_path,
@@ -410,12 +413,11 @@ def cam(queue, camera_url):
                 ipcam.stop(camera_url)
                 break
         print(str(time.time()) + ' 识别系统已关闭')
-        log_helper.log_out('info', local_business_logs_path,
-                           str(time.time()) + ' 识别系统已关闭')
+        log_helper.log_out('info', local_business_logs_path, str(time.time()) + ' 识别系统已关闭')
     except BaseException as e:
-        log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e))
+        log_helper.log_out('error', camera_url + ':  ' + local_business_logs_path, 'File: ' +
+                           e.__traceback__.tb_frame.f_globals['__file__'] + ', lineon: ' +
+                           str(e.__traceback__.tb_lineno) + ', error info: ' + str(e))
         raise
     finally:
         cv2.destroyAllWindows()
@@ -433,8 +435,9 @@ def clear_folds():
         # 定时清理
         scheduler.add_job(func=clear_local_business_logs, args=(current_time_y, current_time_m, current_time_d),
                           trigger='cron', month='*', day='*', hour='0', minute='0')
+
         scheduler.add_job(func=clear_local_capture_images, args=(current_time_y, current_time_m, current_time_d),
-                          trigger='cron', month='*', day='1', hour='0', minute='0')
+                          trigger='cron', month='*', day='*', hour='0', minute='0')
         scheduler.start()
     except BaseException as e:
         log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
