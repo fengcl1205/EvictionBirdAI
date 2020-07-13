@@ -103,16 +103,23 @@ class socket_c:
         self.server_ip = business_path_config['application_system_ip_port'][0]
         self.server_port = int(business_path_config['application_system_ip_port'][1])
         self.send_data = dict()
+        self.conn_status = 0
 
     def socket_conn(self):
         try:
             # connet servier
             self.tcp_client_socket.connect((self.server_ip, self.server_port))
+            self.conn_status = 1
         except BaseException as e:
             log_helper.log_out('error', local_business_logs_path,
                        'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                        + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
                        + str(e))
+            self.tcp_client_socket.close()
+            self.conn_status = 0
+
+    def get_conn_status(self):
+        return self.conn_status
 
     def socket_cend(self, target_info, detect_img, detect_time, camera_number, disperse_sign):
         try:
@@ -125,6 +132,7 @@ class socket_c:
                        'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                        + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
                        + str(e))
+
 
     def socket_recv(self):
         recvData = self.tcp_client_socket.recv(1024)
@@ -299,7 +307,7 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
 
 
 # 摄像头视频检测
-def demo_video(sess, net, frame, camera_url, lazy_frequency, sc, dispersed_time):
+def demo_video(sess, net, frame, camera_url, lazy_frequency, dispersed_time):
     """Detect object classes in an image usi， ng pre-computed object proposals."""
     im = frame
     timer = Timer()
@@ -317,6 +325,7 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, sc, dispersed_time)
     # Visualize detections for each class
     CONF_THRESH = detect_threshold  # threshold
     NMS_THRESH = nms_threshold
+    sc = socket_c()
     try:
         video_name = ''
         for cls_ind, cls in enumerate(CLASSES[1:]):
@@ -338,27 +347,28 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, sc, dispersed_time)
                 # target_info[cls] = len(inds) - len(invalid_target_ele)
                 target_info[cls] = valid_target_info
             # 多线程检测目标写入磁盘
-            detect_time = datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S.%f')
+            detect_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
         if find_target_flag:
             lazy_frequency += 1
         else:
             lazy_frequency = 0
         if (lazy_frequency == max_residence_frame) and ((time.time() - dispersed_time) > dispersed_rest_time):
-                dispersed_time = time.time()
-                t_persistence = threading.Thread(target=detection_persistence, daemon=True, args=(
-                    detect_time, images, camera_url_fold_name)).start()
-                # t_persistence.join()  # 设置主线程等待子线程结束
-                sc.socket_conn()
+            dispersed_time = time.time()
+            t_persistence = threading.Thread(target=detection_persistence, daemon=True, args=(
+                detect_time, images, camera_url_fold_name)).start()
+            # t_persistence.join()  # 设置主线程等待子线程结束
+            sc.socket_conn()
+            if sc.get_conn_status() == 1:
                 sc.socket_cend(target_info, '', detect_time, camera_url_fold_name, '1')
-                sc.socket_clse()
-                lazy_frequency = 0
+            lazy_frequency = 0
         return lazy_frequency, dispersed_time
     except BaseException as e:
         log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                            + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
                            + str(e))
         raise
-
+    finally:
+        sc.socket_clse()
 
 # 相机触发函数
 def cam(queue, camera_url):
@@ -380,8 +390,6 @@ def cam(queue, camera_url):
         net = vgg16(batch_size=1)
     else:
         raise NotImplementedError
-    sc = socket_c()
-    threading.Thread(target=sc.socket_conn, daemon=True, args=()).start()
     try:
         n_classes = len(CLASSES)
         # create the structure of the net having a certain shape (which depends on the number of classes)
@@ -407,7 +415,7 @@ def cam(queue, camera_url):
         dispersed_time = 0.
         while True:
             frame = ipcam.get_frame()
-            lazy_frequency, dispersed_time = demo_video(sess, net,  frame, camera_url, lazy_frequency, sc, dispersed_time)
+            lazy_frequency, dispersed_time = demo_video(sess, net,  frame, camera_url, lazy_frequency, dispersed_time)
             key = cv2.waitKey(1)
             if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
                 ipcam.stop(camera_url)
@@ -422,7 +430,6 @@ def cam(queue, camera_url):
     finally:
         cv2.destroyAllWindows()
         sess.close()
-        sc.socket_clse()
 
 
 # 清空指定日期前的ftp上的捕获图像和本地的日志
@@ -451,10 +458,10 @@ if __name__ == '__main__':
     # gpu_num = args.gpu_num
     try:
         # 超过某时间推出程序##################
-        detect_time = datetime.datetime.now().strftime('%Y-%m-%d')
-        print(detect_time)
-        if str(detect_time) > '2020-10-15':
-            sys.exit(0)
+        # detect_time = datetime.datetime.now().strftime('%Y-%m-%d')
+        # print(detect_time)
+        # if str(detect_time) > '2020-10-15':
+        #     sys.exit(0)
 
         # 定期清理ftp上的检测图像和日志文件
         clear_folds()

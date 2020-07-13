@@ -16,7 +16,7 @@ camera_name:
 max_lazy_frequency: 1
 
 # 同一摄像头触发驱赶后的不工作时间(秒)
-dispersed_rest_time: 3
+dispersed_rest_time: 5
 
 # 最大容忍误判的跳帧数（为连续出现误判的最大帧频断开次数）
 #max_misjudgment_frame_skipping: 3
@@ -28,7 +28,7 @@ dispersed_rest_time: 3
 #misjudgment_duration: 40
 
 # 检测目标阈值(精度)
-detect_threshold: 0.85
+detect_threshold: 0.55
 
 # 非极大值抑制（搜索框重贴）值越小重叠度越高
 nms_threshold: 0.1
@@ -67,4 +67,4 @@ local_business_logs_path: /mnt/sdb/qn_business_logs
 local_business_logs_retain_time: 30
 
 # ftp上图像保留时间(日)
-ftp_images_retain_time: 3
+ftp_images_retain_time: 8
