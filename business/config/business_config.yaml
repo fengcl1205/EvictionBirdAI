@@ -1,3 +1,9 @@
+# 日志级别(低到高：DEBUG-INFO-WARN-ERROR)
+log_level: INFO
+
+# 是否将日志打印到控制台
+print_console_flag: False
+
 # 网络摄像头地址
 camera_url:
   - rtsp://admin:123456@192.168.1.17:554

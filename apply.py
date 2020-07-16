@@ -23,7 +23,6 @@ import multiprocessing as mp
 from apscheduler.schedulers.background import BackgroundScheduler
 from business.utils import path_helper as ph
 from business.utils import log_helper
-import sys
 
 
 project_address = ph.get_local_project_path(os.path.dirname(os.path.abspath(__file__)), 0)
@@ -46,6 +45,7 @@ nms_threshold = business_path_config['nms_threshold']
 local_cap_video_path = business_path_config['local_cap_video_path']
 all_detect_categories = detect_categories_config['all_detect_categories']
 target_detect_categories = detect_categories_config['target_detect_categories']
+print_console_flag = business_path_config['print_console_flag']
 CLASSES = tuple(all_detect_categories)
 TARGET_CLASSES = tuple(target_detect_categories)
 # CLASSES = ('__background__',  'crow', 'magpie', 'pigeon', 'swallow', 'sparrow', 'airplane',  'person')
@@ -64,7 +64,7 @@ class IpCamCapture:
 
     def start_t(self, camera_url):
         log_helper.log_out('info', local_business_logs_path,
-                           camera_url + ' 摄像头打卡')
+                           camera_url + ' 摄像头打卡', print_console_flag)
         # 把程序放进子线程，daemon=True 表示该线程会随着主线程关闭而关闭。
         threading.Thread(target=self.query_frame, daemon=True, args=()).start()
 
@@ -72,7 +72,7 @@ class IpCamCapture:
     def stop(self, camera_url):
         self.isstop = True
         log_helper.log_out('info', local_business_logs_path,
-                           camera_url + ' 摄像头关闭')
+                           camera_url + ' 摄像头关闭', print_console_flag)
 
     # 当有需要影像时，再回传最新的影像。
     def get_frame(self):
@@ -85,7 +85,7 @@ class IpCamCapture:
                 # 摄像头传来数据由于转义等未知原因无法读取时，重新调用摄像头
                 if not self.status:
                     log_helper.log_out('info', local_business_logs_path,
-                                       '视频流发现问题，矫正中...')
+                                       '视频流发现问题，矫正中...', print_console_flag)
                     self.capture = cv2.VideoCapture(self.url)
                     self.status, self.Frame = self.capture.read()
             self.capture.release()
@@ -93,7 +93,7 @@ class IpCamCapture:
             log_helper.log_out('error', local_business_logs_path,
                            'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                            + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e))
+                           + str(e), print_console_flag)
             raise
 
 
@@ -114,7 +114,7 @@ class socket_c:
             log_helper.log_out('error', local_business_logs_path,
                        'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                        + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                       + str(e))
+                       + str(e), print_console_flag)
             self.tcp_client_socket.close()
             self.conn_status = 0
 
@@ -131,8 +131,7 @@ class socket_c:
             log_helper.log_out('error', local_business_logs_path,
                        'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                        + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                       + str(e))
-
+                       + str(e), print_console_flag)
 
     def socket_recv(self):
         recvData = self.tcp_client_socket.recv(1024)
@@ -164,7 +163,7 @@ def detection_persistence(detect_time, images, camera_url):
     except BaseException as e:
         log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                            + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e))
+                           + str(e), print_console_flag)
         raise
 
 
@@ -190,7 +189,7 @@ def detection_video_persistence(detect_time, images):
     except BaseException as e:
         log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                            + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e))
+                           + str(e), print_console_flag)
         raise
 
 
@@ -207,7 +206,7 @@ def clear_local_business_logs(current_time_y, current_time_m, current_time_d):
         log_helper.log_out('error', local_business_logs_path,
                        'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                        + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                       + str(e))
+                       + str(e), print_console_flag)
         raise
 
 
@@ -228,7 +227,7 @@ def clear_local_capture_images(current_time_y, current_time_m, current_time_d):
         log_helper.log_out('error', local_business_logs_path,
                            'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                            + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e))
+                           + str(e), print_console_flag)
         raise
 
 
@@ -346,7 +345,6 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, dispersed_time):
                 find_target_flag = True
                 # target_info[cls] = len(inds) - len(invalid_target_ele)
                 target_info[cls] = valid_target_info
-            # 多线程检测目标写入磁盘
             detect_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
         if find_target_flag:
             lazy_frequency += 1
@@ -354,6 +352,7 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, dispersed_time):
             lazy_frequency = 0
         if (lazy_frequency == max_residence_frame) and ((time.time() - dispersed_time) > dispersed_rest_time):
             dispersed_time = time.time()
+            # 多线程检测目标写入磁盘
             t_persistence = threading.Thread(target=detection_persistence, daemon=True, args=(
                 detect_time, images, camera_url_fold_name)).start()
             # t_persistence.join()  # 设置主线程等待子线程结束
@@ -365,7 +364,7 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, dispersed_time):
     except BaseException as e:
         log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                            + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e))
+                           + str(e), print_console_flag)
         raise
     finally:
         sc.socket_clse()
@@ -376,7 +375,7 @@ def cam(queue, camera_url):
     tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_320700.ckpt'
     if not os.path.isfile(tfmodel + '.meta'):
         log_helper.log_out('info', local_business_logs_path,
-                           tfmodel)
+                           tfmodel, print_console_flag)
         raise IOError(('{:s} not found.\nDid you download the proper networks from '
                        'our server and place them properly?').format(tfmodel + '.meta'))
     # set config
@@ -399,7 +398,7 @@ def cam(queue, camera_url):
         saver.restore(sess, tfmodel)
         # print('Loaded network {:s}'.format(tfmodel))
         log_helper.log_out('info', local_business_logs_path,
-                           'Loaded network {:s}'.format(tfmodel))
+                           'Loaded network {:s}'.format(tfmodel), print_console_flag)
         timer_trigger = Timer()
         timer_trigger.tic()
         ipcam = IpCamCapture(camera_url)
@@ -408,7 +407,7 @@ def cam(queue, camera_url):
         time.sleep(1)
         # print(str(time.time()) + ' Monitoring ...')
         log_helper.log_out('info', local_business_logs_path,
-                           str(time.time()) + ' Monitoring ...')
+                           str(time.time()) + ' Monitoring ...', print_console_flag)
         # 发现目标的连续次数
         lazy_frequency = 0
         # 记录上次触发驱鸟跑时间
@@ -421,11 +420,11 @@ def cam(queue, camera_url):
                 ipcam.stop(camera_url)
                 break
         print(str(time.time()) + ' 识别系统已关闭')
-        log_helper.log_out('info', local_business_logs_path, str(time.time()) + ' 识别系统已关闭')
+        log_helper.log_out('info', local_business_logs_path, str(time.time()) + ' 识别系统已关闭', print_console_flag)
     except BaseException as e:
         log_helper.log_out('error', camera_url + ':  ' + local_business_logs_path, 'File: ' +
                            e.__traceback__.tb_frame.f_globals['__file__'] + ', lineon: ' +
-                           str(e.__traceback__.tb_lineno) + ', error info: ' + str(e))
+                           str(e.__traceback__.tb_lineno) + ', error info: ' + str(e), print_console_flag)
         raise
     finally:
         cv2.destroyAllWindows()
@@ -449,7 +448,7 @@ def clear_folds():
     except BaseException as e:
         log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                            + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e))
+                           + str(e), print_console_flag)
         raise
 
 
@@ -479,4 +478,4 @@ if __name__ == '__main__':
     except BaseException as e:
         log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                            + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e))
+                           + str(e), print_console_flag)
