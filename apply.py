@@ -5,6 +5,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sys
 import shutil
 import cv2
 import numpy as np
@@ -53,50 +54,6 @@ TARGET_CLASSES = tuple(target_detect_categories)
 np.set_printoptions(threshold=np.inf)
 
 
-# 接收摄影机串流影像，采用多线程的方式，降低缓冲区栈图帧的问题。
-class IpCamCapture:
-    def __init__(self, url):
-        self.url = url
-        self.Frame = list()
-        self.status = False
-        self.isstop = False
-        self.capture = cv2.VideoCapture(self.url)
-
-    def start_t(self, camera_url):
-        log_helper.log_out('info', local_business_logs_path,
-                           camera_url + ' 摄像头打卡', print_console_flag)
-        # 把程序放进子线程，daemon=True 表示该线程会随着主线程关闭而关闭。
-        threading.Thread(target=self.query_frame, daemon=True, args=()).start()
-
-    # 停止无限循环的开关
-    def stop(self, camera_url):
-        self.isstop = True
-        log_helper.log_out('info', local_business_logs_path,
-                           camera_url + ' 摄像头关闭', print_console_flag)
-
-    # 当有需要影像时，再回传最新的影像。
-    def get_frame(self):
-        return self.Frame
-
-    def query_frame(self):
-        try:
-            while not self.isstop:
-                self.status, self.Frame = self.capture.read()
-                # 摄像头传来数据由于转义等未知原因无法读取时，重新调用摄像头
-                if not self.status:
-                    log_helper.log_out('info', local_business_logs_path,
-                                       '视频流发现问题，矫正中...', print_console_flag)
-                    self.capture = cv2.VideoCapture(self.url)
-                    self.status, self.Frame = self.capture.read()
-            self.capture.release()
-        except BaseException as e:
-            log_helper.log_out('error', local_business_logs_path,
-                           'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e), print_console_flag)
-            raise
-
-
 class socket_c:
     def __init__(self):
         self.tcp_client_socket = socket(AF_INET, SOCK_STREAM)
@@ -139,6 +96,26 @@ class socket_c:
 
     def socket_clse(self):
         self.tcp_client_socket.close()
+
+
+def image_put(queue, camera_url):
+    try:
+        capture = cv2.VideoCapture(camera_url)
+        while True:
+            status, frame = capture.read()
+            if not status:
+                log_helper.log_out('info', local_business_logs_path, camera_url + ' 视频流发现问题，矫正中...', print_console_flag)
+                capture = cv2.VideoCapture(camera_url)
+                status, frame = capture.read()
+            queue.put(frame)
+            queue.get() if queue.qsize() > 50 else time.sleep(0.01)
+        # capture.release()
+    except BaseException as e:
+        log_helper.log_out('error', local_business_logs_path,
+                       'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                       + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
+                       + str(e), print_console_flag)
+        raise
 
 
 # 检测到目标的图片并且持久化
@@ -197,11 +174,11 @@ def detection_video_persistence(detect_time, images):
 def clear_local_business_logs(current_time_y, current_time_m, current_time_d):
     try:
         data_folder_path = os.listdir(local_business_logs_path)
-        for file in data_folder_path:
+        for date_folder in data_folder_path:
             if (datetime.date(int(current_time_y), int(current_time_m), int(current_time_d)) -
-                datetime.date(int(file.split('-')[0]), int(file.split('-')[1]),
-                              int(file.split('-')[2][:5]))).days > ftp_images_retain_time:
-                os.remove(os.path.join(local_business_logs_path, file))
+                datetime.date(int(date_folder.split('-')[0]), int(date_folder.split('-')[1]),
+                              int(date_folder.split('-')[2][:5]))).days > ftp_images_retain_time:
+                shutil.rmtree(os.path.join(local_business_logs_path, date_folder))
     except BaseException as e:
         log_helper.log_out('error', local_business_logs_path,
                        'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
@@ -369,6 +346,7 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, dispersed_time):
     finally:
         sc.socket_clse()
 
+
 # 相机触发函数
 def cam(queue, camera_url):
     demonet = 'vgg16'
@@ -401,10 +379,6 @@ def cam(queue, camera_url):
                            'Loaded network {:s}'.format(tfmodel), print_console_flag)
         timer_trigger = Timer()
         timer_trigger.tic()
-        ipcam = IpCamCapture(camera_url)
-        ipcam.start_t(camera_url)
-        # 暂停1秒，确保影像已经填充队列
-        time.sleep(1)
         # print(str(time.time()) + ' Monitoring ...')
         log_helper.log_out('info', local_business_logs_path,
                            str(time.time()) + ' Monitoring ...', print_console_flag)
@@ -412,12 +386,13 @@ def cam(queue, camera_url):
         lazy_frequency = 0
         # 记录上次触发驱鸟跑时间
         dispersed_time = 0.
+        # 休眠一会以保证数据先加入缓冲区
+        time.sleep(2)
         while True:
-            frame = ipcam.get_frame()
+            frame = queue.get()
             lazy_frequency, dispersed_time = demo_video(sess, net,  frame, camera_url, lazy_frequency, dispersed_time)
-            key = cv2.waitKey(1)
+            key = cv2.waitKey(0.1)
             if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
-                ipcam.stop(camera_url)
                 break
         print(str(time.time()) + ' 识别系统已关闭')
         log_helper.log_out('info', local_business_logs_path, str(time.time()) + ' 识别系统已关闭', print_console_flag)
@@ -429,6 +404,7 @@ def cam(queue, camera_url):
     finally:
         cv2.destroyAllWindows()
         sess.close()
+        sys.exit(0)
 
 
 # 清空指定日期前的ftp上的捕获图像和本地的日志
@@ -465,10 +441,11 @@ if __name__ == '__main__':
         # 定期清理ftp上的检测图像和日志文件
         clear_folds()
         mp.set_start_method(method='spawn')  # init
-        queue = mp.Queue(maxsize=10)
         processes = list()
         # 摄像头进程
         for camera_url in camera_url_list:
+            queue = mp.Queue(maxsize=2)
+            processes.append(mp.Process(target=image_put, args=(queue, camera_url)))
             processes.append(mp.Process(target=cam, args=(queue, camera_url)))
         for process in processes:
             process.daemon = True
