@@ -99,14 +99,23 @@ class socket_c:
 
 
 def image_put(queue, camera_url):
+    continuous_interruption_count = 0
     try:
         capture = cv2.VideoCapture(camera_url)
         while True:
             status, frame = capture.read()
             if not status:
+                continuous_interruption_count += 1
                 log_helper.log_out('info', local_business_logs_path, camera_url + ' 视频流发现问题，矫正中...', print_console_flag)
                 capture = cv2.VideoCapture(camera_url)
                 status, frame = capture.read()
+                if not status:
+                    continuous_interruption_count += 1
+            else:
+                continuous_interruption_count = 0
+            # 连续中断5帧则退出
+            if continuous_interruption_count >= 4:
+                raise IOError(str(camera_url) + ' 摄像头发生异常而终端！')
             queue.put(frame)
             queue.get() if queue.qsize() > 50 else time.sleep(0.01)
         # capture.release()
@@ -374,7 +383,7 @@ def cam(queue, camera_url):
                                 tag='default', anchor_scales=[8, 16, 32, 64])
         saver = tf.train.Saver()
         saver.restore(sess, tfmodel)
-        # print('Loaded network {:s}'.format(tfmodel))
+        print('Loaded network {:s}'.format(tfmodel))
         log_helper.log_out('info', local_business_logs_path,
                            'Loaded network {:s}'.format(tfmodel), print_console_flag)
         timer_trigger = Timer()
@@ -389,6 +398,9 @@ def cam(queue, camera_url):
         # 休眠一会以保证数据先加入缓冲区
         time.sleep(2)
         while True:
+            # 如果影响缓冲区数据为空，则持续等待
+            if queue.qsize() < 1:
+                continue
             frame = queue.get()
             lazy_frequency, dispersed_time = demo_video(sess, net,  frame, camera_url, lazy_frequency, dispersed_time)
             key = cv2.waitKey(0.1)
@@ -446,7 +458,7 @@ if __name__ == '__main__':
         for camera_url in camera_url_list:
             queue = mp.Queue(maxsize=2)
             processes.append(mp.Process(target=image_put, args=(queue, camera_url)))
-            processes.append(mp.Process(target=cam, args=(queue, camera_url)))
+            # processes.append(mp.Process(target=cam, args=(queue, camera_url)))
         for process in processes:
             process.daemon = True
             process.start()
