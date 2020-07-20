@@ -5,7 +5,7 @@ from logging.handlers import RotatingFileHandler
 from business.utils import path_helper as ph
 from business.utils import yaml_helper
 project_address = ph.get_local_project_path(os.path.dirname(os.path.abspath(__file__)), 1)
-business_path_config = yaml_helper.get_data_from_yaml(project_address + '/business/config/business_config.yaml')
+business_path_config = yaml_helper.get_data_from_yaml(project_address + '/config/business_config.yaml')
 local_business_logs_path = business_path_config['local_business_logs_path']
 print_console_flag = business_path_config['print_console_flag']
 log_file_backup_count = business_path_config['log_file_backup_count']
