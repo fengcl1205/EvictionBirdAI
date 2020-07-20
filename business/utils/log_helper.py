@@ -1,10 +1,19 @@
 import logging
 import time
 import os
+from logging.handlers import RotatingFileHandler
+from business.utils import path_helper as ph
+from business.utils import yaml_helper
+project_address = ph.get_local_project_path(os.path.dirname(os.path.abspath(__file__)), 1)
+business_path_config = yaml_helper.get_data_from_yaml(project_address + '/business/config/business_config.yaml')
+local_business_logs_path = business_path_config['local_business_logs_path']
+print_console_flag = business_path_config['print_console_flag']
+log_file_backup_count = business_path_config['log_file_backup_count']
+log_file_limit_size = business_path_config['log_file_limit_size']
 
 
 # param:日志级别、日志路径、日志内容、是否打印在控制台
-def log_out(log_level, local_business_logs_path, log_content, console_flag):
+def log_out(log_level, log_content):
     rq_ymd = time.strftime(u'%Y-%m-%d', time.localtime(time.time()))
     if not os.path.exists(local_business_logs_path + '/' + rq_ymd):
         os.makedirs(local_business_logs_path + '/' + rq_ymd)
@@ -13,7 +22,9 @@ def log_out(log_level, local_business_logs_path, log_content, console_flag):
     if log_level == 'debug':
         logger.setLevel(logging.DEBUG)
         debug_log_name = local_business_logs_path + '/' + rq_ymd + '/' + u'debug.log'
-        fh_debug = logging.FileHandler(debug_log_name, mode=u'a')
+        # maxBytes：最大10M， backupCount：备份数量
+        fh_debug = RotatingFileHandler(debug_log_name, mode=u'a', maxBytes=log_file_limit_size * 1024 * 1024,
+                                      backupCount=log_file_backup_count, encoding=None, delay=0)
         fh_debug.setFormatter(formatter)
         logger.addHandler(fh_debug)
         logging.debug(log_content)
@@ -22,7 +33,8 @@ def log_out(log_level, local_business_logs_path, log_content, console_flag):
     elif log_level == 'info':
         logger.setLevel(logging.INFO)
         debug_log_name = local_business_logs_path + '/' + rq_ymd + '/' + u'info.log'
-        fh_info = logging.FileHandler(debug_log_name, mode=u'a')
+        fh_info = RotatingFileHandler(debug_log_name, mode=u'a', maxBytes=log_file_limit_size * 1024 * 1024,
+                                      backupCount=log_file_backup_count, encoding=None, delay=0)
         fh_info.setFormatter(formatter)
         logger.addHandler(fh_info)
         logging.info(log_content)
@@ -31,7 +43,8 @@ def log_out(log_level, local_business_logs_path, log_content, console_flag):
     elif log_level == 'warning':
         logger.setLevel(logging.WARNING)
         debug_log_name = local_business_logs_path + '/' + rq_ymd + '/' + u'warning.log'
-        fh_warning = logging.FileHandler(debug_log_name, mode=u'a')
+        fh_warning = RotatingFileHandler(debug_log_name, mode=u'a', maxBytes=log_file_limit_size * 1024 * 1024,
+                                      backupCount=log_file_backup_count, encoding=None, delay=0)
         fh_warning.setFormatter(formatter)
         logger.addHandler(fh_warning)
         logging.warning(log_content)
@@ -40,7 +53,8 @@ def log_out(log_level, local_business_logs_path, log_content, console_flag):
     elif log_level == 'error':
         logger.setLevel(logging.ERROR)
         debug_log_name = local_business_logs_path + '/' + rq_ymd + '/' + u'error.log'
-        fh_error = logging.FileHandler(debug_log_name, mode=u'a')
+        fh_error = RotatingFileHandler(debug_log_name, mode=u'a', maxBytes=log_file_limit_size * 1024 * 1024,
+                                      backupCount=log_file_backup_count, encoding=None, delay=0)
         fh_error.setFormatter(formatter)
         logger.addHandler(fh_error)
         logging.error(log_content)
@@ -51,7 +65,7 @@ def log_out(log_level, local_business_logs_path, log_content, console_flag):
     fh.setFormatter(formatter)
     logger.addHandler(fh)
     # 是否将日志打印在控制台
-    if console_flag:
+    if print_console_flag:
         console = logging.StreamHandler()
         if log_level == 'debug':
             console.setLevel(logging.DEBUG)
