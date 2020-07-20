@@ -31,7 +31,7 @@ business_path_config = yaml_helper.get_data_from_yaml(project_address + '/busine
 detect_categories_config = yaml_helper.get_data_from_yaml(project_address + '/business/config/detect_cls.yaml')
 eliminate_misjudgment = yaml_helper.get_data_from_yaml(project_address + '/business/config/eliminate_misjudgment.yaml')
 # 触发报警的最大"连续"识别次数
-max_residence_frame = business_path_config['max_lazy_frequency']
+max_lazy_frequency = business_path_config['max_lazy_frequency']
 # # 同一摄像头触发驱赶后的不工作时间(秒)
 dispersed_rest_time = business_path_config['dispersed_rest_time']
 # 网络摄像头
@@ -41,12 +41,12 @@ camera_name_list = business_path_config['camera_name']
 ftp_images_retain_time = business_path_config['ftp_images_retain_time']
 local_business_logs_path = business_path_config['local_business_logs_path']
 local_business_logs_retain_time = business_path_config['local_business_logs_retain_time']
+print_console_flag = business_path_config['print_console_flag']
 detect_threshold = business_path_config['detect_threshold']
 nms_threshold = business_path_config['nms_threshold']
 local_cap_video_path = business_path_config['local_cap_video_path']
 all_detect_categories = detect_categories_config['all_detect_categories']
 target_detect_categories = detect_categories_config['target_detect_categories']
-print_console_flag = business_path_config['print_console_flag']
 CLASSES = tuple(all_detect_categories)
 TARGET_CLASSES = tuple(target_detect_categories)
 # CLASSES = ('__background__',  'crow', 'magpie', 'pigeon', 'swallow', 'sparrow', 'airplane',  'person')
@@ -68,10 +68,8 @@ class socket_c:
             self.tcp_client_socket.connect((self.server_ip, self.server_port))
             self.conn_status = 1
         except BaseException as e:
-            log_helper.log_out('error', local_business_logs_path,
-                       'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                       + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                       + str(e), print_console_flag)
+            log_helper.log_out('error', 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                       + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: ' + str(e))
             self.tcp_client_socket.close()
             self.conn_status = 0
 
@@ -85,10 +83,8 @@ class socket_c:
                                   "detectTime": detect_time, "cameraNumber": camera_number}
                 self.tcp_client_socket.send((str(self.send_data) + '##').encode())
         except BaseException as e:
-            log_helper.log_out('error', local_business_logs_path,
-                       'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                       + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                       + str(e), print_console_flag)
+            log_helper.log_out('error', 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                       + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: ' + str(e))
 
     def socket_recv(self):
         recvData = self.tcp_client_socket.recv(1024)
@@ -100,82 +96,56 @@ class socket_c:
 
 def image_put(queue, camera_url):
     continuous_interruption_count = 0
+    log_helper.log_out('info', str(time.time()) + ' ' + camera_url + ' 加载影像数据')
     try:
-        capture = cv2.VideoCapture(camera_url)
+        capture = cv2.VideoCapture(camera_url, cv2.CAP_DSHOW)
         while True:
             status, frame = capture.read()
             if not status:
                 continuous_interruption_count += 1
-                log_helper.log_out('info', local_business_logs_path, camera_url + ' 视频流发现问题，矫正中...', print_console_flag)
-                capture = cv2.VideoCapture(camera_url)
+                log_helper.log_out('info', camera_url + ' 视频流发现问题，矫正中...')
+                capture = cv2.VideoCapture(camera_url, cv2.CAP_DSHOW)
                 status, frame = capture.read()
                 if not status:
                     continuous_interruption_count += 1
             else:
                 continuous_interruption_count = 0
-            # 连续中断5帧则退出
-            if continuous_interruption_count >= 4:
-                raise IOError(str(camera_url) + ' 摄像头发生异常而终端！')
+            # 连续中断指定帧数则退出
+            if continuous_interruption_count >= 10:
+                raise IOError(str(camera_url) + ' 摄像头发生异常而中断！')
             queue.put(frame)
             queue.get() if queue.qsize() > 50 else time.sleep(0.01)
         # capture.release()
     except BaseException as e:
-        log_helper.log_out('error', local_business_logs_path,
-                       'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                       + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                       + str(e), print_console_flag)
+        log_helper.log_out('error', 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                       + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '+ str(e))
         raise
 
 
 # 检测到目标的图片并且持久化
 def detection_persistence(detect_time, images, camera_url):
-    '''
-    qn_ftp = QnFtp()
-    try:
-        qn_ftp.upload(detect_time, images)
-    except BaseException as e:
-         log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e))
-         raise
-    finally:
-        qn_ftp.ftp_quit()
-    '''
     try:
         path = local_cap_video_path + '/' + camera_url + '/' + detect_time.split()[0]
         if not os.path.exists(path):
             os.makedirs(path)
         cv2.imwrite(path + '/' + detect_time + '.jpg', images)
     except BaseException as e:
-        log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e), print_console_flag)
+        log_helper.log_out('error', 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: ' + str(e))
         raise
 
 
 # 检测到目标的视频并且持久化
 def detection_video_persistence(detect_time, images):
-    '''
-    qn_ftp = QnFtp()
-    try:
-        qn_ftp.upload(detect_time, images)
-    except BaseException as e:
-         log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e))
-         raise
-    finally:
-        qn_ftp.ftp_quit()
-    '''
     try:
         path = local_cap_video_path + '/' + detect_time.split()[0]
         if not os.path.exists(path):
             os.makedirs(path)
         cv2.imwrite(path + '/' + detect_time + '.jpg', images)
+        log_helper.log_out('info', str(time.time()) + ' ' + detect_time + '.jpg' + ' 目标图片持久化完成')
     except BaseException as e:
-        log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e), print_console_flag)
+        log_helper.log_out('error', 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: ' + str(e))
         raise
 
 
@@ -188,11 +158,10 @@ def clear_local_business_logs(current_time_y, current_time_m, current_time_d):
                 datetime.date(int(date_folder.split('-')[0]), int(date_folder.split('-')[1]),
                               int(date_folder.split('-')[2][:5]))).days > ftp_images_retain_time:
                 shutil.rmtree(os.path.join(local_business_logs_path, date_folder))
+                log_helper.log_out('info', str(time.time()) + ' 日志清理完成')
     except BaseException as e:
-        log_helper.log_out('error', local_business_logs_path,
-                       'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                       + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                       + str(e), print_console_flag)
+        log_helper.log_out('error', 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                       + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: ' + str(e))
         raise
 
 
@@ -209,11 +178,10 @@ def clear_local_capture_images(current_time_y, current_time_m, current_time_d):
                         datetime.date(int(date_folder.split('-')[0]), int(date_folder.split('-')[1]),
                                       int(date_folder.split('-')[2]))).days > ftp_images_retain_time:
                         shutil.rmtree(os.path.join(ip_folder_path, date_folder))
+                        log_helper.log_out('info', str(time.time()) + ' 检测目标图像清理完成')
     except BaseException as e:
-        log_helper.log_out('error', local_business_logs_path,
-                           'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e), print_console_flag)
+        log_helper.log_out('error', 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: ' + str(e))
         raise
 
 
@@ -336,7 +304,7 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, dispersed_time):
             lazy_frequency += 1
         else:
             lazy_frequency = 0
-        if (lazy_frequency == max_residence_frame) and ((time.time() - dispersed_time) > dispersed_rest_time):
+        if (lazy_frequency == max_lazy_frequency) and ((time.time() - dispersed_time) > dispersed_rest_time):
             dispersed_time = time.time()
             # 多线程检测目标写入磁盘
             t_persistence = threading.Thread(target=detection_persistence, daemon=True, args=(
@@ -348,9 +316,8 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, dispersed_time):
             lazy_frequency = 0
         return lazy_frequency, dispersed_time
     except BaseException as e:
-        log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e), print_console_flag)
+        log_helper.log_out('error', 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: ' + str(e))
         raise
     finally:
         sc.socket_clse()
@@ -361,8 +328,7 @@ def cam(queue, camera_url):
     demonet = 'vgg16'
     tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_320700.ckpt'
     if not os.path.isfile(tfmodel + '.meta'):
-        log_helper.log_out('info', local_business_logs_path,
-                           tfmodel, print_console_flag)
+        log_helper.log_out('info', tfmodel)
         raise IOError(('{:s} not found.\nDid you download the proper networks from '
                        'our server and place them properly?').format(tfmodel + '.meta'))
     # set config
@@ -384,34 +350,36 @@ def cam(queue, camera_url):
         saver = tf.train.Saver()
         saver.restore(sess, tfmodel)
         print('Loaded network {:s}'.format(tfmodel))
-        log_helper.log_out('info', local_business_logs_path,
-                           'Loaded network {:s}'.format(tfmodel), print_console_flag)
-        timer_trigger = Timer()
-        timer_trigger.tic()
-        # print(str(time.time()) + ' Monitoring ...')
-        log_helper.log_out('info', local_business_logs_path,
-                           str(time.time()) + ' Monitoring ...', print_console_flag)
+        log_helper.log_out('info', 'Loaded network {:s}'.format(tfmodel))
+        log_helper.log_out('info', str(time.time()) + ' Monitoring ...')
         # 发现目标的连续次数
         lazy_frequency = 0
         # 记录上次触发驱鸟跑时间
         dispersed_time = 0.
+        timer_trigger = Timer()
+        timer_trigger.tic()
         # 休眠一会以保证数据先加入缓冲区
-        time.sleep(2)
+        time.sleep(1)
         while True:
-            # 如果影响缓冲区数据为空，则持续等待
+            # 如果影像缓冲区数据为空，则持续等待
             if queue.qsize() < 1:
+                timer_trigger.toc()
+                # 如果影像断开超过指定时间则退出当前进程
+                if timer_trigger.total_time > 180:
+                    break
+                time.sleep(0.01)
                 continue
+            timer_trigger.tic()
             frame = queue.get()
             lazy_frequency, dispersed_time = demo_video(sess, net,  frame, camera_url, lazy_frequency, dispersed_time)
-            key = cv2.waitKey(0.1)
+            key = cv2.waitKey(1)
             if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
                 break
-        print(str(time.time()) + ' 识别系统已关闭')
-        log_helper.log_out('info', local_business_logs_path, str(time.time()) + ' 识别系统已关闭', print_console_flag)
+        print(str(time.time()) + ' ' + camera_url + ' 识别系统已关闭')
+        log_helper.log_out('info', str(time.time()) + ' ' + camera_url + ' 识别系统已关闭')
     except BaseException as e:
-        log_helper.log_out('error', camera_url + ':  ' + local_business_logs_path, 'File: ' +
-                           e.__traceback__.tb_frame.f_globals['__file__'] + ', lineon: ' +
-                           str(e.__traceback__.tb_lineno) + ', error info: ' + str(e), print_console_flag)
+        log_helper.log_out('error', camera_url + 'File: ' + e.__traceback__.tb_frame.f_globals['__file__'] +
+                           ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: ' + str(e))
         raise
     finally:
         cv2.destroyAllWindows()
@@ -434,9 +402,8 @@ def clear_folds():
                           trigger='cron', month='*', day='*', hour='0', minute='0')
         scheduler.start()
     except BaseException as e:
-        log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e), print_console_flag)
+        log_helper.log_out('error', 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: ' + str(e))
         raise
 
 
@@ -458,13 +425,12 @@ if __name__ == '__main__':
         for camera_url in camera_url_list:
             queue = mp.Queue(maxsize=2)
             processes.append(mp.Process(target=image_put, args=(queue, camera_url)))
-            # processes.append(mp.Process(target=cam, args=(queue, camera_url)))
+            processes.append(mp.Process(target=cam, args=(queue, camera_url)))
         for process in processes:
             process.daemon = True
             process.start()
         for process in processes:
             process.join()
     except BaseException as e:
-        log_helper.log_out('error', local_business_logs_path, 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
-                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: '
-                           + str(e), print_console_flag)
+        log_helper.log_out('error', 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
+                           + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: ' + str(e))
