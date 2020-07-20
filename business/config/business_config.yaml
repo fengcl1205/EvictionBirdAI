@@ -4,6 +4,12 @@ log_level: INFO
 # 是否将日志打印到控制台
 print_console_flag: False
 
+# 单个日志文件限制大小(兆)
+log_file_limit_size: 10
+
+# 日志文件备份数
+log_file_backup_count: 5
+
 # 网络摄像头地址
 camera_url:
   - rtsp://admin:123456@192.168.1.17:554
