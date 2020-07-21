@@ -94,17 +94,17 @@ class socket_c:
         self.tcp_client_socket.close()
 
 
-def image_put(queue, camera_url):
+def image_put(queue, queue1, camera_url, ele):
     continuous_interruption_count = 0
     log_helper.log_out('info', str(time.time()) + ' ' + camera_url + ' 加载影像数据')
     try:
-        capture = cv2.VideoCapture(camera_url, cv2.CAP_DSHOW)
+        capture = cv2.VideoCapture(ele, cv2.CAP_DSHOW)
         while True:
             status, frame = capture.read()
             if not status:
                 continuous_interruption_count += 1
                 log_helper.log_out('info', camera_url + ' 视频流发现问题，矫正中...')
-                capture = cv2.VideoCapture(camera_url, cv2.CAP_DSHOW)
+                capture = cv2.VideoCapture(ele, cv2.CAP_DSHOW)
                 status, frame = capture.read()
                 if not status:
                     continuous_interruption_count += 1
@@ -114,7 +114,12 @@ def image_put(queue, camera_url):
             if continuous_interruption_count >= 10:
                 raise IOError(str(camera_url) + ' 摄像头发生异常而中断！')
             queue.put(frame)
-            queue.get() if queue.qsize() > 50 else time.sleep(0.01)
+            if queue.qsize() > 1:
+                queue.get()
+            else:
+                time.sleep(0.01)
+            if queue1.qsize() != 0:
+                return
         # capture.release()
     except BaseException as e:
         log_helper.log_out('error', 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
@@ -324,7 +329,7 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, dispersed_time):
 
 
 # 相机触发函数
-def cam(queue, camera_url):
+def cam(queue, queue1, camera_url):
     demonet = 'vgg16'
     tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_320700.ckpt'
     if not os.path.isfile(tfmodel + '.meta'):
@@ -359,17 +364,8 @@ def cam(queue, camera_url):
         timer_trigger = Timer()
         timer_trigger.tic()
         # 休眠一会以保证数据先加入缓冲区
-        time.sleep(1)
+        time.sleep(2)
         while True:
-            # 如果影像缓冲区数据为空，则持续等待
-            if queue.qsize() < 1:
-                timer_trigger.toc()
-                # 如果影像断开超过指定时间则退出当前进程
-                if timer_trigger.total_time > 180:
-                    break
-                time.sleep(0.01)
-                continue
-            timer_trigger.tic()
             frame = queue.get()
             lazy_frequency, dispersed_time = demo_video(sess, net,  frame, camera_url, lazy_frequency, dispersed_time)
             key = cv2.waitKey(1)
@@ -377,6 +373,7 @@ def cam(queue, camera_url):
                 break
         print(str(time.time()) + ' ' + camera_url + ' 识别系统已关闭')
         log_helper.log_out('info', str(time.time()) + ' ' + camera_url + ' 识别系统已关闭')
+        return
     except BaseException as e:
         log_helper.log_out('error', camera_url + 'File: ' + e.__traceback__.tb_frame.f_globals['__file__'] +
                            ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: ' + str(e))
@@ -384,7 +381,7 @@ def cam(queue, camera_url):
     finally:
         cv2.destroyAllWindows()
         sess.close()
-        sys.exit(0)
+        queue1.put(0)
 
 
 # 清空指定日期前的ftp上的捕获图像和本地的日志
@@ -422,10 +419,14 @@ if __name__ == '__main__':
         mp.set_start_method(method='spawn')  # init
         processes = list()
         # 摄像头进程
-        for camera_url in camera_url_list:
+        aa =[0,1]
+        # for camera_url in camera_url_list:
+        camera_url = 'rtsp://admin:123456@192.168.1.16:554'
+        for ele in aa:
             queue = mp.Queue(maxsize=2)
-            processes.append(mp.Process(target=image_put, args=(queue, camera_url)))
-            processes.append(mp.Process(target=cam, args=(queue, camera_url)))
+            queue1 = mp.Queue(maxsize=1)
+            processes.append(mp.Process(target=image_put, args=(queue, queue1, camera_url, ele)))
+            processes.append(mp.Process(target=cam, args=(queue, queue1, camera_url)))
         for process in processes:
             process.daemon = True
             process.start()
