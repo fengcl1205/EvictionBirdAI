@@ -94,25 +94,25 @@ class socket_c:
         self.tcp_client_socket.close()
 
 
-def image_put(queue, queue1, camera_url, ele):
-    continuous_interruption_count = 0
+def image_put(queue, queue1, camera_url):
+    # continuous_interruption_count = 0
     log_helper.log_out('info', str(time.time()) + ' ' + camera_url + ' 加载影像数据')
     try:
-        capture = cv2.VideoCapture(ele, cv2.CAP_DSHOW)
+        capture = cv2.VideoCapture(camera_url)
         while True:
             status, frame = capture.read()
             if not status:
-                continuous_interruption_count += 1
+                # continuous_interruption_count += 1
                 log_helper.log_out('info', camera_url + ' 视频流发现问题，矫正中...')
-                capture = cv2.VideoCapture(ele, cv2.CAP_DSHOW)
+                capture = cv2.VideoCapture(camera_url)
                 status, frame = capture.read()
-                if not status:
-                    continuous_interruption_count += 1
-            else:
-                continuous_interruption_count = 0
+                # if not status:
+                #     continuous_interruption_count += 1
+            # else:
+            #     continuous_interruption_count = 0
             # 连续中断指定帧数则退出
-            if continuous_interruption_count >= 10:
-                raise IOError(str(camera_url) + ' 摄像头发生异常而中断！')
+            # if continuous_interruption_count >= 10:
+            #     raise IOError(str(camera_url) + ' 摄像头发生异常而中断！')
             queue.put(frame)
             if queue.qsize() > 1:
                 queue.get()
@@ -419,14 +419,28 @@ if __name__ == '__main__':
         mp.set_start_method(method='spawn')  # init
         processes = list()
         # 摄像头进程
-        aa =[0,1]
-        # for camera_url in camera_url_list:
-        camera_url = 'rtsp://admin:123456@192.168.1.16:554'
-        for ele in aa:
-            queue = mp.Queue(maxsize=2)
-            queue1 = mp.Queue(maxsize=1)
-            processes.append(mp.Process(target=image_put, args=(queue, queue1, camera_url, ele)))
-            processes.append(mp.Process(target=cam, args=(queue, queue1, camera_url)))
+        for index in range(len(camera_url_list)):
+            locals()['queue_' + str(index)] = mp.Queue(maxsize=2)
+            locals()['queue1_' + str(index)] = mp.Queue(maxsize=1)
+            if index == 0:
+                processes.append(mp.Process(target=image_put, args=(queue_0, queue1_0, camera_url_list[index])))
+                processes.append(mp.Process(target=cam, args=(queue_0, queue1_0, camera_url_list[index])))
+            elif index == 1:
+                processes.append(mp.Process(target=image_put, args=(queue_1, queue1_1, camera_url_list[index])))
+                processes.append(mp.Process(target=cam, args=(queue_1, queue1_1, camera_url_list[index])))
+            if index == 2:
+                processes.append(mp.Process(target=image_put, args=(queue_2, queue1_2, camera_url_list[index])))
+                processes.append(mp.Process(target=cam, args=(queue_2, queue1_2, camera_url_list[index])))
+            elif index == 3:
+                processes.append(mp.Process(target=image_put, args=(queue_3, queue1_3, camera_url_list[index])))
+                processes.append(mp.Process(target=cam, args=(queue_3, queue1_3, camera_url_list[index])))
+            elif index == 4:
+                processes.append(mp.Process(target=image_put, args=(queue_4, queue1_4, camera_url_list[index])))
+                processes.append(mp.Process(target=cam, args=(queue_4, queue1_4, camera_url_list[index])))
+            elif index == 5:
+                processes.append(mp.Process(target=image_put, args=(queue_5, queue1_5, camera_url_list[index])))
+                processes.append(mp.Process(target=cam, args=(queue_5, queue1_5, camera_url_list[index])))
+
         for process in processes:
             process.daemon = True
             process.start()
