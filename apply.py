@@ -94,10 +94,15 @@ class socket_c:
         self.tcp_client_socket.close()
 
 
+def release_camera(cap):
+    cap.release()
+
+
 def image_put(queue, queue1, camera_url):
     # continuous_interruption_count = 0
     log_helper.log_out('info', str(time.time()) + ' ' + camera_url + ' 加载影像数据')
     try:
+        release_camera_tiem = time.time()
         capture = cv2.VideoCapture(camera_url)
         while True:
             status, frame = capture.read()
@@ -113,13 +118,21 @@ def image_put(queue, queue1, camera_url):
             # 连续中断指定帧数则退出
             # if continuous_interruption_count >= 10:
             #     raise IOError(str(camera_url) + ' 摄像头发生异常而中断！')
+            if time.time() - release_camera_tiem > 30:
+                print('释放摄像头中。。。')
+                release_camera(capture)
+                release_camera_tiem = time.time()
+                capture = cv2.VideoCapture(camera_url)
+                status, frame = capture.read()
             queue.put(frame)
             if queue.qsize() > 1:
                 queue.get()
-            else:
+            elif queue.qsize() < 1:
+                print('加载数据为空，等待加载。。。')
                 time.sleep(0.01)
             if queue1.qsize() != 0:
                 return
+        print('加载数据模块退出')
         # capture.release()
     except BaseException as e:
         log_helper.log_out('error', 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
@@ -361,10 +374,8 @@ def cam(queue, queue1, camera_url):
         lazy_frequency = 0
         # 记录上次触发驱鸟跑时间
         dispersed_time = 0.
-        timer_trigger = Timer()
-        timer_trigger.tic()
         # 休眠一会以保证数据先加入缓冲区
-        time.sleep(2)
+        # time.sleep(2)
         while True:
             frame = queue.get()
             lazy_frequency, dispersed_time = demo_video(sess, net,  frame, camera_url, lazy_frequency, dispersed_time)
