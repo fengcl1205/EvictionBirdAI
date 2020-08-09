@@ -24,6 +24,7 @@ import multiprocessing as mp
 from apscheduler.schedulers.background import BackgroundScheduler
 from business.utils import path_helper as ph
 from business.utils import log_helper
+import queue
 
 
 project_address = ph.get_local_project_path(os.path.dirname(os.path.abspath(__file__)), 0)
@@ -119,7 +120,7 @@ def image_put(queue, queue1, camera_url):
             # if continuous_interruption_count >= 10:
             #     raise IOError(str(camera_url) + ' 摄像头发生异常而中断！')
             if time.time() - release_camera_tiem > 30:
-                print('释放摄像头中。。。')
+                print(camera_url+' 释放摄像头中。。。')
                 release_camera(capture)
                 release_camera_tiem = time.time()
                 capture = cv2.VideoCapture(camera_url)
@@ -127,9 +128,8 @@ def image_put(queue, queue1, camera_url):
             queue.put(frame)
             if queue.qsize() > 1:
                 queue.get()
-            elif queue.qsize() < 1:
-                print('加载数据为空，等待加载。。。')
-                time.sleep(0.01)
+            else:
+                time.sleep(0.04)
             if queue1.qsize() != 0:
                 return
         print('加载数据模块退出')
@@ -233,7 +233,9 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
             temp += str(x2)
             temp += '#'
             temp += str(y2)
+            # 增加误判（可以用的，只是暂时不用）
             # 如果坐标值在误判区则不显示
+            '''
             if len(camera_url_list[0]) != 0 and camera_url == camera_url_list[0]:
                 if temp in eliminate_misjudgment['misjudgment_coordinate_SouthTower']:
                     invalid_target_ele.append(class_name)
@@ -250,6 +252,7 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
                 if temp in eliminate_misjudgment['misjudgment_coordinate_NorthSlide']:
                     invalid_target_ele.append(class_name)
                     continue
+            '''
             # 记录有效坐标信息
             centre_x = round(((x1 - x2) / 2), 2) + x2
             centre_y = round(((y1 - y2) / 2), 2) + y2
@@ -379,6 +382,8 @@ def cam(queue, queue1, camera_url):
         while True:
             frame = queue.get()
             lazy_frequency, dispersed_time = demo_video(sess, net,  frame, camera_url, lazy_frequency, dispersed_time)
+            # cv2.imshow('',frame)
+            # time.sleep(0.01)
             key = cv2.waitKey(1)
             if key == ord('q') or key == ord('Q') or key == 27:  # ESC:27  key: quit program
                 break
@@ -415,6 +420,44 @@ def clear_folds():
         raise
 
 
+def fun1():
+    camera_url1 = 'rtsp://admin:123456@192.168.1.14:554'
+    queue_0 = queue.Queue(maxsize=2)
+    queue1_0 = queue.Queue(maxsize=1)
+    threading.Thread(target=image_put, args=(queue_0, queue1_0, camera_url1)).start()
+    threading.Thread(target=cam, args=(queue_0, queue1_0, camera_url1)).start()
+
+
+def fun2():
+    camera_url2 = 'rtsp://admin:123456@192.168.1.15:554'
+
+    queue_1 = queue.Queue(maxsize=2)
+    queue1_1 = queue.Queue(maxsize=1)
+    threading.Thread(target=image_put, args=(queue_1, queue1_1, camera_url2)).start()
+    threading.Thread(target=cam, args=(queue_1, queue1_1, camera_url2)).start()
+
+
+def fun3():
+    camera_url3 = 'rtsp://admin:123456@192.168.1.16:554'
+    queue_2 = queue.Queue(maxsize=2)
+    queue1_2 = queue.Queue(maxsize=1)
+    threading.Thread(target=image_put, args=(queue_2, queue1_2, camera_url3)).start()
+    threading.Thread(target=cam, args=(queue_2, queue1_2, camera_url3)).start()
+
+
+def fun4():
+    camera_url4 = 'rtsp://admin:123456@192.168.1.17:554'
+    queue_3 = queue.Queue(maxsize=2)
+    queue1_3 = queue.Queue(maxsize=1)
+    threading.Thread(target=image_put, args=(queue_3, queue1_3, camera_url4)).start()
+    threading.Thread(target=cam, args=(queue_3, queue1_3, camera_url4)).start()
+
+
+def fun(queue1, queue2, camera_url):
+    threading.Thread(target=image_put, args=(queue1, queue2, camera_url)).start()
+    threading.Thread(target=cam, args=(queue1, queue2, camera_url)).start()
+
+
 if __name__ == '__main__':
     args = parse_args()
     # gpu_num = args.gpu_num
@@ -430,33 +473,66 @@ if __name__ == '__main__':
         mp.set_start_method(method='spawn')  # init
         processes = list()
         # 摄像头进程
+        # aa = [0]
+        # queue = mp.Queue(maxsize=2)
+        # queue1 = mp.Queue(maxsize=1)
+        # camera_url = 'rtsp://admin:123456@192.168.1.14:554'
+        # for ele in aa:
+        #     processes.append(mp.Process(target=image_put, args=(queue, queue1, camera_url,ele)))
+        #     processes.append(mp.Process(target=cam, args=(queue, queue1, camera_url)))
+
+        '''
+        camera_url1 = 'rtsp://admin:123456@192.168.1.16:554'
+        camera_url2 = 'rtsp://admin:123456@192.168.1.17:554'
+        queue_0 = queue.Queue(maxsize=2)
+        queue1_0 = queue.Queue(maxsize=1)
+        threading.Thread(target=image_put, args=(queue_0, queue1_0, camera_url1)).start()
+        threading.Thread(target=cam, args=(queue_0, queue1_0, camera_url1)).start()
+
+        queue_1 = queue.Queue(maxsize=2)
+        queue1_1 = queue.Queue(maxsize=1)
+        threading.Thread(target=image_put, args=(queue_1, queue1_1, camera_url2)).start()
+        threading.Thread(target=cam, args=(queue_1, queue1_1, camera_url2)).start()
+        '''
+        # 多进程
+        for camera_url in camera_url_list:
+            if camera_url == r'rtsp://admin:123456@192.168.1.14:554':
+                processes.append(mp.Process(target=fun1, args=()))
+            if camera_url == r'rtsp://admin:123456@192.168.1.15:554':
+                processes.append(mp.Process(target=fun2, args=()))
+            if camera_url == r'rtsp://admin:123456@192.168.1.16:554':
+                processes.append(mp.Process(target=fun3, args=()))
+            if camera_url == r'rtsp://admin:123456@192.168.1.17:554':
+                processes.append(mp.Process(target=fun4, args=()))
+        for process in processes:
+            process.daemon = True
+            process.start()
+        for process in processes:
+            process.join()
+
+        '''
         for index in range(len(camera_url_list)):
-            locals()['queue_' + str(index)] = mp.Queue(maxsize=2)
-            locals()['queue1_' + str(index)] = mp.Queue(maxsize=1)
+            locals()['queue_' + str(index)] = queue.Queue(maxsize=2)
+            locals()['queue1_' + str(index)] = queue.Queue(maxsize=1)
             if index == 0:
-                processes.append(mp.Process(target=image_put, args=(queue_0, queue1_0, camera_url_list[index])))
-                processes.append(mp.Process(target=cam, args=(queue_0, queue1_0, camera_url_list[index])))
+                processes.append(mp.Process(target=fun, args=(queue_0, queue1_0, camera_url_list[index])))
             elif index == 1:
-                processes.append(mp.Process(target=image_put, args=(queue_1, queue1_1, camera_url_list[index])))
-                processes.append(mp.Process(target=cam, args=(queue_1, queue1_1, camera_url_list[index])))
-            if index == 2:
-                processes.append(mp.Process(target=image_put, args=(queue_2, queue1_2, camera_url_list[index])))
-                processes.append(mp.Process(target=cam, args=(queue_2, queue1_2, camera_url_list[index])))
+                processes.append(mp.Process(target=fun, args=(queue_1, queue1_1, camera_url_list[index])))
+            elif index == 2:
+                processes.append(mp.Process(target=fun, args=(queue_2, queue1_2, camera_url_list[index])))
             elif index == 3:
-                processes.append(mp.Process(target=image_put, args=(queue_3, queue1_3, camera_url_list[index])))
-                processes.append(mp.Process(target=cam, args=(queue_3, queue1_3, camera_url_list[index])))
+                processes.append(mp.Process(target=fun, args=(queue_3, queue1_3, camera_url_list[index])))
             elif index == 4:
-                processes.append(mp.Process(target=image_put, args=(queue_4, queue1_4, camera_url_list[index])))
-                processes.append(mp.Process(target=cam, args=(queue_4, queue1_4, camera_url_list[index])))
+                processes.append(mp.Process(target=fun, args=(queue_4, queue1_4, camera_url_list[index])))
             elif index == 5:
-                processes.append(mp.Process(target=image_put, args=(queue_5, queue1_5, camera_url_list[index])))
-                processes.append(mp.Process(target=cam, args=(queue_5, queue1_5, camera_url_list[index])))
+                processes.append(mp.Process(target=fun, args=(queue_5, queue1_5, camera_url_list[index])))
 
         for process in processes:
             process.daemon = True
             process.start()
         for process in processes:
             process.join()
+        '''
     except BaseException as e:
         log_helper.log_out('error', 'File: ' + e.__traceback__.tb_frame.f_globals['__file__']
                            + ', lineon: ' + str(e.__traceback__.tb_lineno) + ', error info: ' + str(e))
