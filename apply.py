@@ -208,6 +208,7 @@ def parse_args():
     """Parse input arguments."""
     parser = argparse.ArgumentParser(description='disperse bird apply ')
     parser.add_argument('--gpu_num', dest='gpu_num', help='please input gpu number')
+    parser.add_argument('--recognition_accuracy', dest='recognition_accuracy', help='please input recognition_accuracy')
     args = parser.parse_args()
     return args
 
@@ -280,6 +281,22 @@ def vis_detections_video(im, class_name, dets, start_time, time_takes, inds, CON
     return im, invalid_target_ele, valid_target_info
 
 
+# 季节性强制排除
+def seasonal_target_exclusion(detect_time, target):
+    month = detect_time.split(' ')[0].split('-')[1]
+    if month == '03' or month == '04' or month == '05':  # 春
+        return target
+    elif month == '06' or month == '07' or month == '08' or month == '09':  # 夏
+        if target == 'crow':
+            return 'swallow'
+        else:
+            return target
+    elif month == '10' or month == '11':  # 秋
+        return target
+    elif month == '12' or month == '01' or month == '02':  # 冬
+        return target
+
+
 # 摄像头视频检测
 def demo_video(sess, net, frame, camera_url, lazy_frequency, dispersed_time):
     """Detect object classes in an image usi， ng pre-computed object proposals."""
@@ -315,12 +332,17 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, dispersed_time):
                 im, cls, dets, timer.start_time, timer.total_time, inds, CONF_THRESH, camera_url)
             frame = cv2.resize(images, (int(1920 // 2), int(1080 // 2)), interpolation=cv2.INTER_CUBIC)
             video_name = camera_name_list[camera_url_list.index(camera_url)]
-            cv2.imshow(video_name, frame)
+            video_name = video_name.split('##')
+            coordinate = video_name[1].split('-')
+            cv2.imshow(video_name[0], frame)
+            cv2.moveWindow(video_name[0], int(coordinate[0]), int(coordinate[1]))
+            detect_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
             if len(inds) != 0 and cls in TARGET_CLASSES and (len(inds) - len(invalid_target_ele)) != 0:
                 find_target_flag = True
                 # target_info[cls] = len(inds) - len(invalid_target_ele)
-                target_info[cls] = valid_target_info
-            detect_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
+                tran_cls = seasonal_target_exclusion(detect_time, cls)
+                target_info[tran_cls] = valid_target_info
+
         if find_target_flag:
             lazy_frequency += 1
         else:
@@ -460,14 +482,13 @@ def fun(queue1, queue2, camera_url):
 
 if __name__ == '__main__':
     args = parse_args()
+    # print(args.recognition_accuracy)
     # gpu_num = args.gpu_num
     try:
-        # 超过某时间推出程序##################
-        # detect_time = datetime.datetime.now().strftime('%Y-%m-%d')
-        # print(detect_time)
-        # if str(detect_time) > '2020-10-15':
-        #     sys.exit(0)
-
+        detect_time = datetime.datetime.now().strftime('%Y-%m-%d')
+        print(detect_time)
+        if str(detect_time) > '2020-11-01':
+            sys.exit(0)
         # 定期清理ftp上的检测图像和日志文件
         clear_folds()
         mp.set_start_method(method='spawn')  # init
