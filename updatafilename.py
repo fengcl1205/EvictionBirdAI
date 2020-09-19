@@ -138,52 +138,71 @@ def create_main_fold():
 
 
 # 对齐同时修改xml 和图片的名字
-def update_file_name_two_file():
-    filepath_images = r'E:\Data\鸟类标注数据\bird_data_summary\JPEGImages\012.person'
+def update_file_name_two_file(cls_name):
+    # cls_name = '001.crow'
+    filepath_images = r'E:\data\图像\驱鸟系统数据\\' + cls_name
     fileList_images = os.listdir(filepath_images)
     filepath = filepath_images+r'\outputs'
     fileList = os.listdir(filepath)
-
-    print(fileList_images)
-    # 输出此文件夹中包含的文件名称
-    print("修改前：" + str(fileList)[1])
-
+    error_flag = False
+    #  判断xml 文件是否在jpg 文件中也出现
+    for fileName in fileList:  # xml files
+        if os.path.isdir(filepath+'\\'+fileName):
+            print('此文件为目录')
+            continue
+        if fileName[:-4] + '.jpg' not in fileList_images:
+            print('xml 出现 jpg 没出现： ' + fileName)
+            error_flag = True
+    # 判断jpg 文件是否在xml 文件中也存在
+    for fileName in fileList_images:  # jpg files
+        if os.path.isdir(filepath_images+'\\'+fileName):
+            print('此文件为目录')
+            continue
+        if fileName[:-4] + '.xml' not in fileList:
+            print('jpg 出现 xml 没出现： ' + fileName)
+            error_flag = True
+    if error_flag:
+        print('检查文件一致性，出现错误')
+        return
+    print('检查文件一致性，ok')
     # 名称变量
-    num = 6835
-    plan_num_len = 6
+    num = 1
+    plan_num_len = 5
     # 遍历文件夹中所有文件
     for fileName in fileList:
-        if os.path.isdir(filepath_images+'\\'+fileName):
-            continue
-        print(fileName)
-        # 匹配文件名正则表达式
         len = getLength(num)
         str_len = ''
         for i in range(plan_num_len - len):
             str_len += '0'
-        os.rename(filepath+'\\'+fileName, filepath+'\\'+str_len + str(num) + '.xml')
-        if fileName[:-4]+'.jpg' in fileList_images:
-            os.rename(filepath_images+'\\'+fileName[:-4]+'.jpg', filepath_images+'\\'+str_len + str(num) + '.jpg')
-        else:
-            print()
+        # 改xml文件名称
+        os.rename(filepath+'\\'+fileName, filepath+'\\'+cls_name+'_'+str_len + str(num) + '.xml')
+        # 改jpg 文件名称
+        os.rename(filepath_images+'\\'+fileName[:-4]+'.jpg', filepath_images+'\\'+ cls_name +'_'+str_len + str(num) + '.jpg')
 
         # 改变编号，继续下一项
         num = num + 1
-    print("***************************************")
     # 改回程序运行前的工作目录
     # 刷新
     sys.stdin.flush()
-    # 输出修改后文件夹中包含的文件名称
-    print("修改后：" + str(os.listdir(filepath))[1])
+
 
 
 # createimageSets()
 # updata_file_name()
-# update_file_name_two_file()
-# analysis_xml('up_cls_name')
+
+# 更改文件名（xml 和 jpg）
+file_cls = ['aeroplane', 'car', 'cat', 'crow', 'dog', 'magpie', 'other', 'owl', 'person', 'pigeon', 'rabbit', 'seagull', 'seagull-pigeon', 'sparrow', 'swallow', 'turtledove', 'windmill', 'woodpecker']
+# file_cls = ['magpie']
+# for cls_name in file_cls:
+#     print('=====================================')
+#     print(cls_name)
+#     update_file_name_two_file(cls_name)
+# print('over!')
+
+analysis_xml('up_cls_name')
 # create_main_fold()
 
 #流程
-create_main_fold()
+# create_main_fold()
 # analysis_xml('up_cls_name')
-analysis_xml('up_path_name')
+# analysis_xml('up_path_name')

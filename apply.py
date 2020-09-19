@@ -369,7 +369,7 @@ def demo_video(sess, net, frame, camera_url, lazy_frequency, dispersed_time):
 # 相机触发函数
 def cam(queue, queue1, camera_url):
     demonet = 'vgg16'
-    tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_320700.ckpt'
+    tfmodel = project_address + '/default/voc_2007_trainval/default_bird/vgg16_faster_rcnn_iter_300000.ckpt'
     if not os.path.isfile(tfmodel + '.meta'):
         log_helper.log_out('info', tfmodel)
         raise IOError(('{:s} not found.\nDid you download the proper networks from '

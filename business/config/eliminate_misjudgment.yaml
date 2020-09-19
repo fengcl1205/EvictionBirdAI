@@ -1,5 +1,5 @@
 # x1、y1、x2、y2 分别表示检测目标框的坐标值
-# 如下坐标均被识别排除，样例：x1##y1##x2##y2
+# 如下坐标均被识别排除
 
 # 南塔台
 misjudgment_coordinate_SouthTower:
